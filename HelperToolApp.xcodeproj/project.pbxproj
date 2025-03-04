@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C71B35FE2D6E82C90010F1BD /* SharedProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71B35FD2D6E82C40010F1BD /* SharedProtocol.swift */; };
-		C71B35FF2D6E82F50010F1BD /* SharedProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71B35FD2D6E82C40010F1BD /* SharedProtocol.swift */; };
 		C7A9F0382D6E8B5500503102 /* HelperTool in CopyFiles */ = {isa = PBXBuildFile; fileRef = C71B35CF2D6E67060010F1BD /* HelperTool */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -47,21 +45,10 @@
 /* Begin PBXFileReference section */
 		C71B35B92D6E66740010F1BD /* HelperToolApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HelperToolApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C71B35CF2D6E67060010F1BD /* HelperTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = HelperTool; sourceTree = BUILT_PRODUCTS_DIR; };
-		C71B35FD2D6E82C40010F1BD /* SharedProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedProtocol.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		C71B35DD2D6E68B50010F1BD /* Exceptions for "HelperToolApp" folder in "HelperToolApp" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = C71B35B82D6E66740010F1BD /* HelperToolApp */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		C7A781072D6E94100046AA6A /* Exceptions for "HelperTool" folder in "Copy Files" phase from "HelperToolApp" target */ = {
+		C7EE5B9C2D77C56400503FC6 /* Exceptions for "HelperTool" folder in "Copy Files" phase from "HelperToolApp" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
 				com.alienator88.HelperApp.HelperTool.plist = (CodeSignOnCopy, );
@@ -76,16 +63,13 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C71B35BB2D6E66740010F1BD /* HelperToolApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				C71B35DD2D6E68B50010F1BD /* Exceptions for "HelperToolApp" folder in "HelperToolApp" target */,
-			);
 			path = HelperToolApp;
 			sourceTree = "<group>";
 		};
 		C71B35D02D6E67060010F1BD /* HelperTool */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				C7A781072D6E94100046AA6A /* Exceptions for "HelperTool" folder in "Copy Files" phase from "HelperToolApp" target */,
+				C7EE5B9C2D77C56400503FC6 /* Exceptions for "HelperTool" folder in "Copy Files" phase from "HelperToolApp" target */,
 			);
 			path = HelperTool;
 			sourceTree = "<group>";
@@ -113,7 +97,6 @@
 		C71B35B02D6E66740010F1BD = {
 			isa = PBXGroup;
 			children = (
-				C71B35FD2D6E82C40010F1BD /* SharedProtocol.swift */,
 				C71B35BB2D6E66740010F1BD /* HelperToolApp */,
 				C71B35D02D6E67060010F1BD /* HelperTool */,
 				C71B35BA2D6E66740010F1BD /* Products */,
@@ -231,7 +214,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C71B35FF2D6E82F50010F1BD /* SharedProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -239,7 +221,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C71B35FE2D6E82C90010F1BD /* SharedProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -377,17 +358,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = HelperToolApp/HelperToolApp.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = BK8443AXLU;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = BK8443AXLU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = HelperToolApp/Info.plist;
+				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_CFBundleDisplayName = HelperToolApp;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -397,6 +381,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.alienator88.HelperToolApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = HelperToolApp;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -407,17 +393,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = HelperToolApp/HelperToolApp.entitlements;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = BK8443AXLU;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = BK8443AXLU;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = HelperToolApp/Info.plist;
+				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_CFBundleDisplayName = HelperToolApp;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -427,6 +416,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.alienator88.HelperToolApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = HelperToolApp;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -435,16 +426,19 @@
 		C71B35D42D6E67060010F1BD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = HelperTool/HelperTool.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = BK8443AXLU;
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = BK8443AXLU;
 				ENABLE_HARDENED_RUNTIME = YES;
-				INFOPLIST_FILE = HelperTool/Info.plist;
-				INSTALL_PATH = /Library/PrivilegedHelperTools;
+				INFOPLIST_FILE = "";
+				INSTALL_PATH = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.alienator88.HelperTool;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -452,16 +446,19 @@
 		C71B35D52D6E67060010F1BD /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = HelperTool/HelperTool.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = BK8443AXLU;
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = BK8443AXLU;
 				ENABLE_HARDENED_RUNTIME = YES;
-				INFOPLIST_FILE = HelperTool/Info.plist;
-				INSTALL_PATH = /Library/PrivilegedHelperTools;
+				INFOPLIST_FILE = "";
+				INSTALL_PATH = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.alienator88.HelperTool;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

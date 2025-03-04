@@ -7,6 +7,11 @@
 
 import Foundation
 
+@objc(HelperToolProtocol)
+public protocol HelperToolProtocol {
+    func runCommand(command: String, withReply reply: @escaping (String) -> Void)
+}
+
 // XPC Communication setup
 class HelperToolService: NSObject, HelperToolProtocol {
 
@@ -36,7 +41,7 @@ class HelperToolService: NSObject, HelperToolProtocol {
 }
 
 // Set up the XPC listener
-let listener = NSXPCListener(machServiceName: helperToolIdentifier)
+let listener = NSXPCListener(machServiceName: "com.alienator88.HelperApp.HelperTool")
 let delegate = HelperToolDelegate()
 listener.delegate = delegate
 listener.resume()
@@ -51,7 +56,6 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate {
         newConnection.exportedInterface = NSXPCInterface(with: HelperToolProtocol.self)
         newConnection.exportedObject = HelperToolService()
         newConnection.resume()
-
         return true
     }
 }

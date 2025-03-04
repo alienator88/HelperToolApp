@@ -11,76 +11,101 @@ struct ContentView: View {
     @StateObject private var helperToolManager = HelperToolManager()
     @State private var commandOutput: String = ""
     @State private var commandToRun: String = "whoami"
-    @State private var isInstalling: Bool = false
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 20) {
+
             HStack {
-                VStack {
-                    Text("Helper Tool Status: \(helperToolManager.isHelperToolInstalled ? "Installed" : "Not Installed")")
-                        .fontWeight(.bold)
-                    Text("\(helperToolManager.statusText)")
-                }
-
-                Button("Refresh Status") {
-                    Task {
-                        await helperToolManager.checkHelperToolStatus(error: nil)
+                Text(helperToolManager.message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .onTapGesture {
+                        Task {
+                            await helperToolManager.manageHelperTool()
+                        }
                     }
-                }
 
+                Spacer()
+
+                Button(action: {
+                    helperToolManager.openSMSettings()
+                }) {
+                    Label("Settings", systemImage: "gear")
+                        .padding(4)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.secondary)
             }
 
 
+            Divider()
 
-            Button(action: {
-                isInstalling = true
-                Task {
-                    if helperToolManager.isHelperToolInstalled {
-                        await helperToolManager.uninstallHelperTool()
-                    } else {
-                        await helperToolManager.installHelperTool()
-                    }
-                    isInstalling = false
-                }
-            }) {
-                if isInstalling {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle())
-                } else {
-                    Text(helperToolManager.isHelperToolInstalled ? "Unregister Helper Tool" : "Register Helper Tool")
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isInstalling)
 
             HStack {
-                TextField("Command to run", text: $commandToRun)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                TextField("Enter command here", text: $commandToRun)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
+                    .textFieldStyle(.plain)
+                    .onSubmit {
+                        Task {
+                            await helperToolManager.runCommand(commandToRun) { output in
+                                commandOutput = output
+                            }
+                        }
+                    }
 
-                Button("Run Command") {
+                Button(action: {
                     Task {
                         await helperToolManager.runCommand(commandToRun) { output in
                             commandOutput = output
                         }
                     }
+                }) {
+                    Label("Execute", systemImage: "play")
+                        .padding(4)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!helperToolManager.isHelperToolInstalled || isInstalling)
+
             }
-            .padding(.horizontal)
 
             ScrollView {
                 Text(commandOutput)
                     .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     .padding()
             }
-            .frame(height: 200)
-            .background(Color.black.opacity(0.05))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.tertiary.opacity(0.1))
             .cornerRadius(8)
-            .padding()
         }
         .padding()
+        .navigationTitle("Helper tool is \(helperToolManager.status.lowercased())")
+        .toolbar {
+            ToolbarItemGroup(placement: .automatic) {
+                Button("Install") {
+                    Task {
+                        await helperToolManager.manageHelperTool(action: .install)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+
+                Button("Uninstall") {
+                    Task {
+                        await helperToolManager.manageHelperTool(action: .uninstall)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+
+            }
+        }
+        .toolbarBackground(.clear)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task {
+                await helperToolManager.manageHelperTool()
+            }
+        }
     }
 }
 

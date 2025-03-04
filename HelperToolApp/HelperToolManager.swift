@@ -6,52 +6,122 @@
 //
 import ServiceManagement
 
+@objc(HelperToolProtocol)
+public protocol HelperToolProtocol {
+    func runCommand(command: String, withReply reply: @escaping (String) -> Void)
+}
+
+enum HelperToolAction {
+    case none      // Only check status
+    case install   // Install the helper tool
+    case uninstall // Uninstall the helper tool
+}
+
 @MainActor
 class HelperToolManager: ObservableObject {
     private var helperConnection: NSXPCConnection?
-
+    let helperToolIdentifier = "com.alienator88.HelperApp.HelperTool"
     @Published var isHelperToolInstalled: Bool = false
-    @Published var statusText: String = "Checking..."
+    @Published var message: String = "Checking..."
+    var status: String {
+        return isHelperToolInstalled ? "Installed" : "Not Installed"
+    }
 
     init() {
         Task {
-            await checkHelperToolStatus(error: nil)
+            await manageHelperTool()
         }
     }
 
-    func installHelperTool() async {
-        do {
-            let plistName = "\(helperToolIdentifier).plist"
-            let service = SMAppService.daemon(plistName: plistName)
-            try service.register()
-            print("Service registered successfully")
 
-            await checkHelperToolStatus(error: nil)
 
-            SMAppService.openSystemSettingsLoginItems()
-        } catch {
-            await checkHelperToolStatus(error: error) // Check status for detailed error message
-            statusText = "Installation failed: \(self.statusText)"
-            print("Failed to install helper: \(error.localizedDescription)")
+
+    func manageHelperTool(action: HelperToolAction = .none) async {
+        let plistName = "\(helperToolIdentifier).plist"
+        let service = SMAppService.daemon(plistName: plistName)
+        var occurredError: NSError?
+
+        // Perform install/uninstall actions if specified
+        switch action {
+        case .install:
+            // Pre-check before registering
+            switch service.status {
+            case .requiresApproval:
+                message = "Registered but requires enabling in System Settings > Login Items."
+                SMAppService.openSystemSettingsLoginItems()
+            case .enabled:
+                message = "Service is already enabled."
+            default:
+                do {
+                    try service.register()
+                    print("Service registered successfully")
+                    if service.status == .requiresApproval {
+                        SMAppService.openSystemSettingsLoginItems()
+                    }
+                } catch let nsError as NSError {
+                    occurredError = nsError
+                    if nsError.code == 1 { // Operation not permitted
+                        message = "Permission required. Enable in System Settings > Login Items."
+                        SMAppService.openSystemSettingsLoginItems()
+                    } else {
+                        message = "Installation failed: \(nsError.localizedDescription)"
+                    }
+                    print("Failed to install helper: \(nsError.localizedDescription)")
+                }
+            }
+
+        case .uninstall:
+            do {
+                try await service.unregister()
+                // Close any existing connection
+                helperConnection?.invalidate()
+                helperConnection = nil
+            } catch let nsError as NSError {
+                occurredError = nsError
+                print("Failed to uninstall helper: \(nsError.localizedDescription)")
+            }
+
+        case .none:
+            break
         }
+
+        // Final status check or error processing
+        if let nsError = occurredError {
+            switch nsError.code {
+            case kSMErrorAlreadyRegistered:
+                message = "Service is already registered and enabled."
+            case kSMErrorLaunchDeniedByUser:
+                message = "User denied permission. Enable in System Settings > Login Items."
+            case kSMErrorInvalidSignature:
+                message = "Invalid signature, ensure proper signing on the application and helper tool."
+            case 1:
+                message = "Authorization required in Settings > Login Items."
+            default:
+                message = "Operation failed: \(nsError.localizedDescription)"
+            }
+        } else {
+            switch service.status {
+            case .notRegistered:
+                message = "Service hasn’t been registered. You may register it now."
+            case .enabled:
+                message = "Service successfully registered and eligible to run."
+            case .requiresApproval:
+                message = "Service registered but requires user approval in Settings > Login Items."
+            case .notFound:
+                message = "Service is not installed."
+            @unknown default:
+                message = "Unknown service status (\(service.status)."
+            }
+        }
+
+        isHelperToolInstalled = (service.status == .enabled)
     }
 
-    func uninstallHelperTool() async {
-        do {
-            let service = SMAppService.daemon(plistName: "\(helperToolIdentifier).plist")
-            try await service.unregister()
 
-            // Close any existing connection
-            helperConnection?.invalidate()
-            helperConnection = nil
-
-            await checkHelperToolStatus(error: nil)
-        } catch {
-            await checkHelperToolStatus(error: error) // Check status for detailed error message
-            statusText = "Uninstallation failed: \(self.statusText)"
-            print("Failed to uninstall helper: \(error.localizedDescription)")
-        }
+    func openSMSettings() {
+        SMAppService.openSystemSettingsLoginItems()
     }
+
 
     func runCommand(_ command: String, completion: @escaping (String) -> Void) async {
         if !isHelperToolInstalled {
@@ -103,41 +173,6 @@ class HelperToolManager: ObservableObject {
         }
     }
 
-    func checkHelperToolStatus(error: Error?) async {
-        let service = SMAppService.daemon(plistName: "\(helperToolIdentifier).plist")
 
-        // Check for specific error cases first
-        if let nsError = error as NSError? {
-            switch nsError.code {
-            case kSMErrorAlreadyRegistered:
-                statusText = "The service is already registered and enabled."
-            case kSMErrorLaunchDeniedByUser:
-                statusText = "The user denied permission. Go to system settings/preferences > Login Items and enable the service."
-            case kSMErrorInvalidSignature:
-                statusText = "Invalid code signature. Ensure the app and helper tool is properly signed."
-            case 1: // Operation not permitted
-                statusText = "The service requires user authorization. Enable it in system settings/preferences > Login Items."
-            default:
-                statusText = "Installation failed with unknown error: \(nsError.localizedDescription)"
-            }
-        } else {
-            // If no error, check status normally
-            switch service.status {
-            case .notRegistered:
-                statusText = "The service hasn’t been registered, you smay register it now."
-            case .enabled:
-                statusText = "The service has been successfully registered and is eligible to run."
-            case .requiresApproval:
-                statusText = "The service has been successfully registered, but the user needs to enable it in system settings/preferences > Login Items."
-            case .notFound:
-                statusText = "An error occurred and the SM framework couldn’t find this service."
-            @unknown default:
-                statusText = "Unknown status. Possibly a new or undocumented status code."
-            }
-        }
-
-        isHelperToolInstalled = (service.status == .enabled)
-    }
 
 }
-
