@@ -12,6 +12,7 @@ HelperToolApp is a demo macOS application that works alongside a privileged help
 
 ## Usage
 The helper tool is automatically installed when the main app registers it. The user must enable it in **System Settings > Login Items** on first registration.
+This is a limitation introduced by Apple to better line up with their security practices, SMAppService can't ask for password prompt to approve on daemon install unfortunately so developers have to direct users to the Settings for approval now on the initial registration.
 
 The main app interacts with the helper tool via `XPC` to perform privileged tasks via the runCommand function which in turn executes bash shell commands as root.
 
