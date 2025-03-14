@@ -33,8 +33,8 @@
 		C7C167812D6E863C00528A1A /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = Contents/Library/HelperTools;
-			dstSubfolderSpec = 1;
+			dstPath = "";
+			dstSubfolderSpec = 6;
 			files = (
 				C7A9F0382D6E8B5500503102 /* HelperTool in CopyFiles */,
 			);
@@ -97,8 +97,8 @@
 		C71B35B02D6E66740010F1BD = {
 			isa = PBXGroup;
 			children = (
-				C71B35BB2D6E66740010F1BD /* HelperToolApp */,
 				C71B35D02D6E67060010F1BD /* HelperTool */,
+				C71B35BB2D6E66740010F1BD /* HelperToolApp */,
 				C71B35BA2D6E66740010F1BD /* Products */,
 			);
 			sourceTree = "<group>";

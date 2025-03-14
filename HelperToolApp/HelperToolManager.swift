@@ -24,7 +24,7 @@ class HelperToolManager: ObservableObject {
     @Published var isHelperToolInstalled: Bool = false
     @Published var message: String = "Checking..."
     var status: String {
-        return isHelperToolInstalled ? "Installed" : "Not Installed"
+        return isHelperToolInstalled ? "Registered" : "Not Registered"
     }
 
     init() {
@@ -33,9 +33,7 @@ class HelperToolManager: ObservableObject {
         }
     }
 
-
-
-
+    // Function to manage the helper tool installation/uninstallation
     func manageHelperTool(action: HelperToolAction = .none) async {
         let plistName = "\(helperToolIdentifier).plist"
         let service = SMAppService.daemon(plistName: plistName)
@@ -54,7 +52,6 @@ class HelperToolManager: ObservableObject {
             default:
                 do {
                     try service.register()
-                    print("Service registered successfully")
                     if service.status == .requiresApproval {
                         SMAppService.openSystemSettingsLoginItems()
                     }
@@ -65,8 +62,9 @@ class HelperToolManager: ObservableObject {
                         SMAppService.openSystemSettingsLoginItems()
                     } else {
                         message = "Installation failed: \(nsError.localizedDescription)"
+                        print("Failed to register helper: \(nsError.localizedDescription)")
                     }
-                    print("Failed to install helper: \(nsError.localizedDescription)")
+
                 }
             }
 
@@ -78,14 +76,70 @@ class HelperToolManager: ObservableObject {
                 helperConnection = nil
             } catch let nsError as NSError {
                 occurredError = nsError
-                print("Failed to uninstall helper: \(nsError.localizedDescription)")
+                print("Failed to unregister helper: \(nsError.localizedDescription)")
             }
 
         case .none:
             break
         }
 
-        // Final status check or error processing
+        updateStatusMessages(with: service, occurredError: occurredError)
+        isHelperToolInstalled = (service.status == .enabled)
+    }
+
+    // Function to open Settings > Login Items
+    func openSMSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+
+    // Function to run privileged commands
+    func runCommand(_ command: String, completion: @escaping (String) -> Void) async {
+        if !isHelperToolInstalled {
+            completion("XPC: Helper tool is not installed")
+            return
+        }
+
+        guard let connection = getConnection() else {
+            completion("XPC: Connection not available")
+            return
+        }
+
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            DispatchQueue.main.async {
+                completion("XPC: Connection error: \(error.localizedDescription)")
+            }
+        }) as? HelperToolProtocol else {
+            completion("XPC: Failed to get remote object")
+            return
+        }
+
+        proxy.runCommand(command: command) { output in
+            DispatchQueue.main.async {
+                completion(output)
+            }
+        }
+    }
+
+
+    // Create/reuse XPC connection
+    private func getConnection() -> NSXPCConnection? {
+        if let connection = helperConnection {
+            return connection
+        }
+        let connection = NSXPCConnection(machServiceName: helperToolIdentifier, options: .privileged)
+        connection.remoteObjectInterface = NSXPCInterface(with: HelperToolProtocol.self)
+        connection.invalidationHandler = { [weak self] in
+            self?.helperConnection = nil
+        }
+        connection.resume()
+        helperConnection = connection
+        return connection
+    }
+
+
+
+    // Helper to update helper status messages
+    func updateStatusMessages(with service: SMAppService, occurredError: NSError?) {
         if let nsError = occurredError {
             switch nsError.code {
             case kSMErrorAlreadyRegistered:
@@ -110,65 +164,7 @@ class HelperToolManager: ObservableObject {
             case .notFound:
                 message = "Service is not installed."
             @unknown default:
-                message = "Unknown service status (\(service.status)."
-            }
-        }
-
-        isHelperToolInstalled = (service.status == .enabled)
-    }
-
-
-    func openSMSettings() {
-        SMAppService.openSystemSettingsLoginItems()
-    }
-
-
-    func runCommand(_ command: String, completion: @escaping (String) -> Void) async {
-        if !isHelperToolInstalled {
-            completion("Helper tool is not installed")
-            return
-        }
-
-        // Create a new connection each time or reuse existing one
-        if helperConnection == nil {
-            helperConnection = NSXPCConnection(machServiceName: helperToolIdentifier, options: .privileged)
-
-            guard let connection = helperConnection else {
-                completion("Failed to create connection")
-                return
-            }
-
-            // Create the interface and set up protocols
-            let interface = NSXPCInterface(with: HelperToolProtocol.self)
-            connection.remoteObjectInterface = interface
-
-            // Set up error handler
-            connection.invalidationHandler = { [weak self] in
-                print("XPC connection invalidated")
-                self?.helperConnection = nil
-            }
-
-            // Start the connection
-            connection.resume()
-        }
-
-        guard let connection = helperConnection else {
-            completion("Connection not available")
-            return
-        }
-
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-            DispatchQueue.main.async {
-                completion("Connection error: \(error.localizedDescription)")
-            }
-        }) as? HelperToolProtocol else {
-            completion("Failed to get remote object")
-            return
-        }
-
-        proxy.runCommand(command: command) { output in
-            DispatchQueue.main.async {
-                completion(output)
+                message = "Unknown service status (\(service.status))."
             }
         }
     }

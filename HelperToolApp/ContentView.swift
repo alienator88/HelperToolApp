@@ -82,7 +82,7 @@ struct ContentView: View {
         .navigationTitle("Helper tool is \(helperToolManager.status.lowercased())")
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
-                Button("Install") {
+                Button("Register") {
                     Task {
                         await helperToolManager.manageHelperTool(action: .install)
                     }
@@ -90,7 +90,7 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
 
-                Button("Uninstall") {
+                Button("Unregister") {
                     Task {
                         await helperToolManager.manageHelperTool(action: .uninstall)
                     }
