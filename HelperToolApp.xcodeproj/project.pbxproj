@@ -97,9 +97,9 @@
 		C71B35B02D6E66740010F1BD = {
 			isa = PBXGroup;
 			children = (
+				C71B35BA2D6E66740010F1BD /* Products */,
 				C71B35D02D6E67060010F1BD /* HelperTool */,
 				C71B35BB2D6E66740010F1BD /* HelperToolApp */,
-				C71B35BA2D6E66740010F1BD /* Products */,
 			);
 			sourceTree = "<group>";
 		};
