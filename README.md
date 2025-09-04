@@ -21,7 +21,8 @@ If the helper tool fails to install:
 1. Ensure the app is **signed with a Developer ID Certificate** (for Release scheme).
 2. Check if the helper tool is included inside the app bundle at `/Contents/Library/HelperTools`
 3. Check if the plist file is included inside the app bundle at `/Contents/Library/LaunchDaemons`
-4. Run this command to check macOS system logs:
+4. Try disabling Sandboxing on the project
+5. Run this command to check macOS system logs:
    ```sh
    log stream --style compact --predicate 'subsystem == "com.apple.libxpc.SMAppService"'
    ```
