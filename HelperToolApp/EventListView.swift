@@ -17,24 +17,43 @@ struct EventListView: View {
         VStack(spacing: 12) {
             // Header with controls
             HStack {
-                // Start/Stop button for streaming mode
-                Button(esloggerManager.isRunning ? "Stop Monitoring" : "Start Monitoring") {
+                // Real-time streaming button
+                Button(esloggerManager.isRunning ? "Stop Stream" : "Start Stream") {
+                    if esloggerManager.isRunning {
+                        esloggerManager.stopESLoggerStreaming()
+                    } else {
+                        esloggerManager.startESLoggerStreaming()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(esloggerManager.isRunning ? .red : .blue)
+                
+                // Create test files button
+                Button("Create Test Files") {
+                    createTestFiles()
+                }
+                .buttonStyle(.bordered)
+                .tint(.green)
+                
+                // Session button
+                Button("Run 5s Session") {
+                    esloggerManager.runESLoggerSession()
+                }
+                .buttonStyle(.bordered)
+                .disabled(esloggerManager.isRunning) // Disable when streaming
+                
+                // Legacy polling button (hidden for now)
+                Button("Legacy Mode") {
                     if esloggerManager.isRunning {
                         esloggerManager.stopESLogger()
                     } else {
                         esloggerManager.startESLogger()
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(esloggerManager.isRunning ? .red : .green)
-                .disabled(esloggerManager.isRunning) // Disable the new button when streaming
-                
-                // New simplified session button
-                Button("Run 5s Session") {
-                    esloggerManager.runESLoggerSession()
-                }
                 .buttonStyle(.bordered)
-                .disabled(esloggerManager.isRunning) // Disable when running streaming mode
+                .tint(.secondary)
+                .disabled(esloggerManager.isRunning) // Disable when streaming
+                .opacity(0.5)
                 
                 Spacer()
                 
@@ -128,6 +147,64 @@ struct EventListView: View {
     
     private var uniqueAppNames: [String] {
         return dataStore.uniqueAppNames
+    }
+    
+    // Create test files to verify streaming is working
+    private func createTestFiles() {
+        Task {
+            let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            guard let downloadsPath = downloadsURL?.path else {
+                print("Could not find Downloads directory")
+                return
+            }
+            
+            // Create eslogger directory if it doesn't exist
+            let esloggerDir = "\(downloadsPath)/eslogger"
+            try? FileManager.default.createDirectory(atPath: esloggerDir, withIntermediateDirectories: true, attributes: nil)
+            
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss-SSS"
+            let timestamp = dateFormatter.string(from: Date())
+            
+            // Create different types of test files to verify streaming
+            let testFiles = [
+                ("StreamTest_Direct_\(timestamp).txt", "Direct file creation test at \(Date())"),
+                ("StreamTest_Atomic_\(timestamp).txt", "Atomic file creation test at \(Date())"),
+                ("StreamTest_Data_\(timestamp).json", #"{"test": "data", "timestamp": "\#(timestamp)", "type": "streaming_test"}"#)
+            ]
+            
+            for (index, (fileName, content)) in testFiles.enumerated() {
+                let filePath = "\(esloggerDir)/\(fileName)"
+                
+                // Add small delay between files
+                if index > 0 {
+                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+                }
+                
+                // Test different file creation methods with longer delays
+                if fileName.contains("Direct") {
+                    // Direct file creation (non-atomic)
+                    FileManager.default.createFile(atPath: filePath, contents: content.data(using: .utf8), attributes: nil)
+                    print("Created direct file: \(fileName)")
+                } else if fileName.contains("Atomic") {
+                    // Atomic file creation (should show temp file then rename)
+                    print("Creating atomic file: \(fileName)")
+                    try? content.write(toFile: filePath, atomically: true, encoding: .utf8)
+                    print("Atomic file creation completed: \(fileName)")
+                } else {
+                    // Data write
+                    try? content.data(using: .utf8)?.write(to: URL(fileURLWithPath: filePath))
+                    print("Created data file: \(fileName)")
+                }
+                
+                // Add longer delay to ensure eslogger captures events
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                
+                print("Created test file: \(fileName)")
+            }
+            
+            print("Created \(testFiles.count) test files in Downloads/eslogger/ - check streaming for real-time events!")
+        }
     }
 }
 

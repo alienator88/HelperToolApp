@@ -13,6 +13,16 @@ public protocol HelperToolProtocol {
     func stopESLogger(withReply reply: @escaping (Bool, String?) -> Void)
     func getESLoggerEvents(withReply reply: @escaping ([String]) -> Void)
     func runESLoggerForDuration(duration: Double, withReply reply: @escaping (String?, String?) -> Void)
+    func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
+    func stopESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
+}
+
+// Protocol for streaming callbacks from helper to main app
+@objc(ESLoggerStreamDelegate)
+public protocol ESLoggerStreamDelegate {
+    @MainActor func didReceiveJSONLine(_ jsonLine: String)
+    @MainActor func didFinishStreaming()
+    @MainActor func didErrorStreaming(_ error: String)
 }
 
 enum HelperToolAction {
@@ -22,7 +32,7 @@ enum HelperToolAction {
 }
 
 @MainActor
-class HelperToolManager: ObservableObject {
+class HelperToolManager: ObservableObject, ESLoggerStreamDelegate {
     private var helperConnection: NSXPCConnection?
     let helperToolIdentifier = "com.alienator88.HelperApp.HelperTool"
     @Published var isHelperToolInstalled: Bool = false
@@ -132,6 +142,11 @@ class HelperToolManager: ObservableObject {
         }
         let connection = NSXPCConnection(machServiceName: helperToolIdentifier, options: .privileged)
         connection.remoteObjectInterface = NSXPCInterface(with: HelperToolProtocol.self)
+        
+        // Set up the exported interface for streaming callbacks
+        connection.exportedInterface = NSXPCInterface(with: ESLoggerStreamDelegate.self)
+        connection.exportedObject = self
+        
         connection.invalidationHandler = { [weak self] in
             self?.helperConnection = nil
         }
@@ -251,7 +266,92 @@ class HelperToolManager: ObservableObject {
         }
     }
     
+    // Kickstart the privileged helper service
+    func kickstartService(completion: @escaping (String) -> Void) async {
+        guard isHelperToolInstalled else {
+            completion("❌ Helper tool is not installed. Cannot kickstart service.")
+            return
+        }
+        
+        // Use the helper tool's runCommand to execute the kickstart with root privileges
+        let kickstartCommand = "launchctl kickstart -k system/com.alienator88.HelperApp.HelperTool"
+        
+        await runCommand(kickstartCommand) { output in
+            let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+            completion("🔄 [\(timestamp)] Kickstart Service Output:\n\(output)")
+        }
+    }
     
+    // New streaming methods
+    func startESLoggerStreaming(completion: @escaping (Bool, String?) -> Void) async {
+        guard isHelperToolInstalled else {
+            completion(false, "Helper tool is not installed")
+            return
+        }
+        
+        guard let connection = getConnection() else {
+            completion(false, "XPC: Connection not available")
+            return
+        }
+        
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            DispatchQueue.main.async {
+                completion(false, "XPC: Connection error: \(error.localizedDescription)")
+            }
+        }) as? HelperToolProtocol else {
+            completion(false, "XPC: Failed to get remote object")
+            return
+        }
+        
+        proxy.startESLoggerStreaming { success, error in
+            DispatchQueue.main.async {
+                completion(success, error)
+            }
+        }
+    }
+    
+    func stopESLoggerStreaming(completion: @escaping (Bool, String?) -> Void) async {
+        guard isHelperToolInstalled else {
+            completion(false, "Helper tool is not installed")
+            return
+        }
+        
+        guard let connection = getConnection() else {
+            completion(false, "XPC: Connection not available")
+            return
+        }
+        
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            DispatchQueue.main.async {
+                completion(false, "XPC: Connection error: \(error.localizedDescription)")
+            }
+        }) as? HelperToolProtocol else {
+            completion(false, "XPC: Failed to get remote object")
+            return
+        }
+        
+        proxy.stopESLoggerStreaming { success, error in
+            DispatchQueue.main.async {
+                completion(success, error)
+            }
+        }
+    }
+    
+    // Streaming delegate - forward to ESLoggerManager
+    var streamDelegate: ESLoggerStreamDelegate?
+    
+    // ESLoggerStreamDelegate implementation
+    func didReceiveJSONLine(_ jsonLine: String) {
+        streamDelegate?.didReceiveJSONLine(jsonLine)
+    }
+    
+    func didFinishStreaming() {
+        streamDelegate?.didFinishStreaming()
+    }
+    
+    func didErrorStreaming(_ error: String) {
+        streamDelegate?.didErrorStreaming(error)
+    }
     
     // Helper to update helper status messages
     func updateStatusMessages(with service: SMAppService, occurredError: NSError?) {

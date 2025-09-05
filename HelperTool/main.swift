@@ -14,6 +14,16 @@ public protocol HelperToolProtocol {
     func stopESLogger(withReply reply: @escaping (Bool, String?) -> Void)
     func getESLoggerEvents(withReply reply: @escaping ([String]) -> Void)
     func runESLoggerForDuration(duration: Double, withReply reply: @escaping (String?, String?) -> Void)
+    func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
+    func stopESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
+}
+
+// Protocol for streaming callbacks from helper to main app
+@objc(ESLoggerStreamDelegate)
+public protocol ESLoggerStreamDelegate {
+    @MainActor func didReceiveJSONLine(_ jsonLine: String)
+    @MainActor func didFinishStreaming()
+    @MainActor func didErrorStreaming(_ error: String)
 }
 
 // XPC Communication setup
@@ -21,6 +31,11 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
     private let esloggerService = ESLoggerService()
     private var eventBuffer: [CreateEvent] = []
     private let eventBufferLock = NSLock()
+    
+    // Streaming state
+    private var streamingConnection: NSXPCConnection?
+    private var isStreaming = false
+    private var streamingProcess: Process?
     
     // Debug logging
     private var debugLogs: [String] = []
@@ -54,6 +69,13 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
 
         newConnection.exportedInterface = NSXPCInterface(with: HelperToolProtocol.self)
         newConnection.exportedObject = self
+        
+        // Set up remote interface for streaming callbacks
+        newConnection.remoteObjectInterface = NSXPCInterface(with: ESLoggerStreamDelegate.self)
+        
+        // Store connection for streaming
+        streamingConnection = newConnection
+        
         newConnection.resume()
         return true
     }
@@ -203,7 +225,7 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
         // Run eslogger for the specified duration and collect all JSON output
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/eslogger")
-        process.arguments = ["create", "rename", "unlink"]
+        process.arguments = ["create", "rename", "unlink", "copyfile", "exchangedata", "link"]
         
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -260,6 +282,136 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
             
             reply(nil, errorMsg)
         }
+    }
+    
+    func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void) {
+        fputs("📡 HELPER XPC: startESLoggerStreaming called at \(Date())\n", stderr)
+        fflush(stderr)
+        
+        let logMessage = "📡 MAIN HELPER: startESLoggerStreaming called at \(Date())\n"
+        let logURL = URL(fileURLWithPath: "/tmp/helper_streaming_debug.log")
+        
+        if let data = logMessage.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: logURL.path) {
+                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
+                    fileHandle.seekToEndOfFile()
+                    fileHandle.write(data)
+                    fileHandle.closeFile()
+                }
+            } else {
+                try? data.write(to: logURL)
+            }
+        }
+        
+        guard !isStreaming else {
+            reply(false, "Already streaming")
+            return
+        }
+        
+        guard let streamingConnection = streamingConnection else {
+            reply(false, "No streaming connection available")
+            return
+        }
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/eslogger")
+        process.arguments = ["create", "rename", "unlink", "copyfile", "exchangedata", "link"]
+        
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+        
+        do {
+            try process.run()
+            self.streamingProcess = process
+            self.isStreaming = true
+            
+            // Get the delegate for callbacks
+            let delegate = streamingConnection.remoteObjectProxyWithErrorHandler { error in
+                fputs("❌ HELPER STREAM: XPC Error: \(error)\n", stderr)
+            } as? ESLoggerStreamDelegate
+            
+            // Start streaming thread
+            DispatchQueue.global().async { [weak self] in
+                self?.streamJSONLines(from: stdoutPipe, to: delegate)
+            }
+            
+            reply(true, nil)
+            
+        } catch {
+            reply(false, "Failed to start eslogger: \(error.localizedDescription)")
+        }
+    }
+    
+    func stopESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void) {
+        fputs("🛑 HELPER XPC: stopESLoggerStreaming called at \(Date())\n", stderr)
+        fflush(stderr)
+        
+        guard isStreaming else {
+            reply(false, "Not currently streaming")
+            return
+        }
+        
+        // Terminate the process
+        streamingProcess?.terminate()
+        streamingProcess = nil
+        isStreaming = false
+        
+        // Notify completion
+        if let connection = streamingConnection {
+            let delegate = connection.remoteObjectProxyWithErrorHandler { error in
+                fputs("❌ HELPER STREAM: XPC Error on finish: \(error)\n", stderr)
+            } as? ESLoggerStreamDelegate
+            
+            Task { @MainActor in
+                delegate?.didFinishStreaming()
+            }
+        }
+        
+        reply(true, nil)
+    }
+    
+    private func streamJSONLines(from pipe: Pipe, to delegate: ESLoggerStreamDelegate?) {
+        let handle = pipe.fileHandleForReading
+        fputs("🔄 HELPER STREAM: Starting to stream JSON lines\n", stderr)
+        fflush(stderr)
+        
+        var buffer = Data()
+        
+        while isStreaming {
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                Thread.sleep(forTimeInterval: 0.05)
+                continue
+            }
+            
+            buffer.append(chunk)
+            
+            // Process complete lines
+            while let newlineRange = buffer.range(of: Data([0x0A])) { // Find newline
+                let lineData = buffer.subdata(in: 0..<newlineRange.lowerBound)
+                buffer.removeSubrange(0..<newlineRange.upperBound)
+                
+                if let jsonLine = String(data: lineData, encoding: .utf8) {
+                    let trimmed = jsonLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty && trimmed.first == "{" && trimmed.last == "}" && trimmed.count > 10 {
+                        // Debug: log all events for Downloads directory (broader filter)
+                        if trimmed.contains("/Users/alin/Downloads") || trimmed.contains("StreamTest") {
+                            fputs("🔍 HELPER STREAM: Sending JSON: \(String(trimmed.prefix(200)))\n", stderr)
+                            fflush(stderr)
+                        }
+                        
+                        Task { @MainActor in
+                            delegate?.didReceiveJSONLine(trimmed)
+                        }
+                    }
+                }
+            }
+        }
+        
+        fputs("🏁 HELPER STREAM: Finished streaming JSON lines\n", stderr)
+        fflush(stderr)
     }
     
     

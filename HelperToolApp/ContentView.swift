@@ -129,6 +129,16 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
 
+                Button("Kickstart Service") {
+                    Task {
+                        await helperToolManager.kickstartService { output in
+                            commandOutput = output
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+
             }
         }
         .toolbarBackground(.clear)

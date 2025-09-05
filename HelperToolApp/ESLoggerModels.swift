@@ -31,6 +31,9 @@ struct ESMessage: Decodable {
         case create(Create)
         case rename(Rename)
         case unlink(Unlink)
+        case copyfile(Copyfile)
+        case exchangedata(Exchangedata)
+        case link(Link)
         
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -41,6 +44,12 @@ struct ESMessage: Decodable {
                 self = .rename(rename)
             } else if let unlink = try? container.decode(Unlink.self, forKey: .unlink) {
                 self = .unlink(unlink)
+            } else if let copyfile = try? container.decode(Copyfile.self, forKey: .copyfile) {
+                self = .copyfile(copyfile)
+            } else if let exchangedata = try? container.decode(Exchangedata.self, forKey: .exchangedata) {
+                self = .exchangedata(exchangedata)
+            } else if let link = try? container.decode(Link.self, forKey: .link) {
+                self = .link(link)
             } else {
                 // Default case for unknown events
                 throw DecodingError.dataCorrupted(DecodingError.Context(
@@ -51,7 +60,7 @@ struct ESMessage: Decodable {
         }
         
         enum CodingKeys: String, CodingKey {
-            case create, rename, unlink
+            case create, rename, unlink, copyfile, exchangedata, link
         }
         
         struct Create: Decodable {
@@ -75,15 +84,63 @@ struct ESMessage: Decodable {
             }
             
             struct DestinationObj: Decodable {
-                let existing_file: PathObj
+                let existing_file: PathObj?
+                let new_path: NewPath?
                 
                 struct PathObj: Decodable { 
                     let path: String 
+                }
+                
+                struct NewPath: Decodable {
+                    let filename: String
+                    let dir: DirObj
+                    
+                    struct DirObj: Decodable {
+                        let path: String
+                    }
+                }
+                
+                // Computed property to get the final destination path
+                var finalPath: String {
+                    if let existingFile = existing_file {
+                        return existingFile.path
+                    } else if let newPath = new_path {
+                        return "\(newPath.dir.path)/\(newPath.filename)"
+                    } else {
+                        return "Unknown"
+                    }
                 }
             }
         }
         
         struct Unlink: Decodable {
+            let target: PathObj
+            
+            struct PathObj: Decodable { 
+                let path: String 
+            }
+        }
+        
+        struct Copyfile: Decodable {
+            let source: PathObj
+            let target: PathObj
+            
+            struct PathObj: Decodable { 
+                let path: String 
+            }
+        }
+        
+        struct Exchangedata: Decodable {
+            let file1: PathObj
+            let file2: PathObj
+            
+            struct PathObj: Decodable { 
+                let path: String 
+            }
+        }
+        
+        struct Link: Decodable {
+            let source: PathObj
             let target: PathObj
             
             struct PathObj: Decodable { 

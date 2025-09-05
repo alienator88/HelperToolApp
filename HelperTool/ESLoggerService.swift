@@ -56,7 +56,7 @@ class ESLoggerService {
         
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/eslogger")
-        process.arguments = ["create", "rename", "unlink"] // Capture create, rename, and unlink events
+        process.arguments = ["create", "rename", "unlink", "copyfile", "exchangedata", "link"] // Capture atomic file operations
         
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

@@ -8,7 +8,7 @@
 import Foundation
 
 @MainActor
-class ESLoggerManager: ObservableObject {
+class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     let helperToolManager: HelperToolManager // Made public for debug access
     private let dataStore: FileCreationDataStore
     
@@ -18,10 +18,10 @@ class ESLoggerManager: ObservableObject {
     @Published var statusMessage = "ESLogger stopped"
     
     private var eventPollingTimer: Timer?
+    private var isStreamingMode = false
     
-    // Temporary storage for create events that might be temp files
+    // Temporary storage for create events that might be temp files (only for true rename correlation)
     private var pendingCreateEvents: [String: FileCreationEvent] = [:]
-    private let correlationTimeout: TimeInterval = 2.0 // 2 seconds to wait for rename
     
     private func addDebugLog(_ message: String) {
         // Remove console logging to clean up output
@@ -30,6 +30,9 @@ class ESLoggerManager: ObservableObject {
     init(helperToolManager: HelperToolManager, dataStore: FileCreationDataStore) {
         self.helperToolManager = helperToolManager
         self.dataStore = dataStore
+        
+        // Set up streaming delegate
+        helperToolManager.streamDelegate = self
     }
     
     func startESLogger() {
@@ -92,6 +95,73 @@ class ESLoggerManager: ObservableObject {
                 self.statusMessage = "ESLogger session completed - processed \(eventCount) events"
             }
         }
+    }
+    
+    // New streaming methods
+    func startESLoggerStreaming() {
+        guard !isRunning else {
+            statusMessage = "Already running"
+            return
+        }
+        
+        isRunning = true
+        isStreamingMode = true
+        statusMessage = "Starting real-time monitoring..."
+        
+        Task {
+            await helperToolManager.startESLoggerStreaming { [weak self] success, error in
+                guard let self = self else { return }
+                
+                if success {
+                    self.statusMessage = "Real-time monitoring active - events appear instantly"
+                } else {
+                    self.isRunning = false
+                    self.isStreamingMode = false
+                    self.statusMessage = "Failed to start streaming: \(error ?? "Unknown error")"
+                }
+            }
+        }
+    }
+    
+    func stopESLoggerStreaming() {
+        guard isRunning && isStreamingMode else { return }
+        
+        Task {
+            await helperToolManager.stopESLoggerStreaming { [weak self] success, error in
+                guard let self = self else { return }
+                
+                self.isRunning = false
+                self.isStreamingMode = false
+                self.statusMessage = success ? "Streaming stopped" : "Error stopping streaming: \(error ?? "Unknown")"
+            }
+        }
+    }
+    
+    // ESLoggerStreamDelegate implementation
+    func didReceiveJSONLine(_ jsonLine: String) {
+        // Process the JSON line immediately
+        if let event = parseJSONLine(jsonLine) {
+            // Debug logging for test files
+            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
+                print("🔍 STREAM DEBUG: Processing \(event.eventType) event for: \(event.createdPath)")
+                if let sourcePath = event.sourcePath {
+                    print("🔍 STREAM DEBUG: Source path: \(sourcePath)")
+                }
+            }
+            processEvent(event)
+        }
+    }
+    
+    func didFinishStreaming() {
+        isRunning = false
+        isStreamingMode = false
+        statusMessage = "Streaming finished"
+    }
+    
+    func didErrorStreaming(_ error: String) {
+        isRunning = false
+        isStreamingMode = false
+        statusMessage = "Streaming error: \(error)"
     }
     
     private func processRawJSON(_ jsonString: String) -> Int {
@@ -158,7 +228,7 @@ class ESLoggerManager: ObservableObject {
         case 25: // ES_EVENT_TYPE_NOTIFY_RENAME
             if case .rename(let renameEvent) = msg.event {
                 return (
-                    path: renameEvent.destination.existing_file.path,
+                    path: renameEvent.destination.finalPath,
                     eventType: "rename",
                     sourcePath: renameEvent.source.path
                 )
@@ -171,7 +241,32 @@ class ESLoggerManager: ObservableObject {
                     sourcePath: nil
                 )
             }
+        case 12: // ES_EVENT_TYPE_NOTIFY_COPYFILE
+            if case .copyfile(let copyEvent) = msg.event {
+                return (
+                    path: copyEvent.target.path,
+                    eventType: "copyfile",
+                    sourcePath: copyEvent.source.path
+                )
+            }
+        case 33: // ES_EVENT_TYPE_NOTIFY_EXCHANGEDATA
+            if case .exchangedata(let exchangeEvent) = msg.event {
+                return (
+                    path: exchangeEvent.file2.path,
+                    eventType: "exchangedata",
+                    sourcePath: exchangeEvent.file1.path
+                )
+            }
+        case 17: // ES_EVENT_TYPE_NOTIFY_LINK
+            if case .link(let linkEvent) = msg.event {
+                return (
+                    path: linkEvent.target.path,
+                    eventType: "link",
+                    sourcePath: linkEvent.source.path
+                )
+            }
         default:
+            print("🔍 DEBUG: Unknown event type: \(msg.event_type)")
             return nil
         }
         return nil
@@ -210,17 +305,23 @@ class ESLoggerManager: ObservableObject {
                         (fileName.hasPrefix(".") && fileName.count > 20 && fileName != ".DS_Store") ||
                         (fileName.contains(".") && fileName.components(separatedBy: ".").count > 3)
         
+        // Debug logging for test files
+        if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
+            print("🔍 CREATE DEBUG: File \(fileName), isTempFile: \(isTempFile)")
+        }
+        
         if isTempFile {
-            // Store temp file creates, don't add to UI yet
+            // Store temp file creates, wait for rename events to provide final names
             pendingCreateEvents[event.createdPath] = event
             
-            // Set a timer to add this event if no rename comes
-            Task {
-                try? await Task.sleep(for: .seconds(correlationTimeout))
-                await handlePendingEventTimeout(createdPath: event.createdPath)
+            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
+                print("🔍 CREATE DEBUG: Storing temp file, waiting for rename: \(event.createdPath)")
             }
         } else {
             // Non-temp file, add immediately
+            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
+                print("🔍 CREATE DEBUG: Adding non-temp file immediately: \(event.createdPath)")
+            }
             addEventToStore(event)
         }
     }
@@ -229,6 +330,18 @@ class ESLoggerManager: ObservableObject {
         guard let sourcePath = event.sourcePath else {
             addEventToStore(event)
             return
+        }
+        
+        // Debug logging for test files
+        if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") || 
+           sourcePath.contains("StreamTest") || sourcePath.contains("eslogger") {
+            print("🔍 RENAME DEBUG: \(sourcePath) → \(event.createdPath)")
+            print("🔍 RENAME DEBUG: Pending creates count: \(pendingCreateEvents.count)")
+            if pendingCreateEvents[sourcePath] != nil {
+                print("🔍 RENAME DEBUG: Found matching pending create for: \(sourcePath)")
+            } else {
+                print("🔍 RENAME DEBUG: No pending create found for: \(sourcePath)")
+            }
         }
         
         // Check if we have a pending create event for the source path
@@ -244,9 +357,16 @@ class ESLoggerManager: ObservableObject {
                 appBundle: pendingCreate.appBundle
             )
             
+            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
+                print("🔍 RENAME DEBUG: Creating correlated event with final name: \(event.createdPath)")
+            }
+            
             addEventToStore(correlatedEvent)
         } else {
             // No pending create, treat as regular rename
+            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
+                print("🔍 RENAME DEBUG: Adding as regular rename: \(event.createdPath)")
+            }
             addEventToStore(event)
         }
     }
@@ -322,15 +442,9 @@ class ESLoggerManager: ObservableObject {
         )
         
         if isTempFile {
-            // Store temp file creates, don't add to UI yet
-            addDebugLog("Storing potential temp file create: \(parsedEvent.createdPath)")
+            // Store temp file creates, wait for rename events to provide final names
+            addDebugLog("Storing temp file create, waiting for rename: \(parsedEvent.createdPath)")
             pendingCreateEvents[parsedEvent.createdPath] = event
-            
-            // Set a timer to add this event if no rename comes
-            Task {
-                try? await Task.sleep(for: .seconds(correlationTimeout))
-                await handlePendingEventTimeout(createdPath: parsedEvent.createdPath)
-            }
         } else {
             // Non-temp file, add immediately
             addDebugLog("Adding non-temp create event: \(parsedEvent.createdPath)")
@@ -400,26 +514,24 @@ class ESLoggerManager: ObservableObject {
         }
     }
     
-    private func handlePendingEventTimeout(createdPath: String) async {
-        // Check if the pending event is still there (wasn't correlated)
-        if let pendingEvent = pendingCreateEvents.removeValue(forKey: createdPath) {
-            addDebugLog("Timeout reached for pending create: \(createdPath), adding to UI")
-            await MainActor.run {
-                addEventToStore(pendingEvent)
-            }
-        }
-    }
     
     private func cleanupOldPendingEvents() {
-        // Remove any events older than correlation timeout
+        // Clean up old pending events (older than 30 seconds) to prevent memory growth
+        // These are temp files that never got a corresponding rename event
         let currentTime = Date()
         let dateFormatter = ISO8601DateFormatter()
+        let cleanupTimeout: TimeInterval = 30.0
         
+        let oldCount = pendingCreateEvents.count
         pendingCreateEvents = pendingCreateEvents.filter { (path, event) in
             if let eventDate = dateFormatter.date(from: event.timeISO8601) {
-                return currentTime.timeIntervalSince(eventDate) < correlationTimeout * 2
+                return currentTime.timeIntervalSince(eventDate) < cleanupTimeout
             }
             return true // Keep if we can't parse date
+        }
+        
+        if pendingCreateEvents.count < oldCount {
+            print("🧹 Cleaned up \(oldCount - pendingCreateEvents.count) old pending temp file events")
         }
     }
     
