@@ -11,72 +11,103 @@ struct ContentView: View {
     @StateObject private var helperToolManager = HelperToolManager()
     @State private var commandOutput: String = ""
     @State private var commandToRun: String = "whoami"
+    
+    // ESLogger integration
+    @StateObject private var dataStore = FileCreationDataStore()
+    @State private var esloggerManager: ESLoggerManager?
+    
+    init() {
+        let store = FileCreationDataStore()
+        self._dataStore = StateObject(wrappedValue: store)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-
-            HStack {
-                Text(helperToolManager.message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .onTapGesture {
-                        Task {
-                            await helperToolManager.manageHelperTool()
+        VSplitView {
+            // Top section: Existing command interface
+            VStack(alignment: .leading, spacing: 20) {
+                HStack {
+                    Text(helperToolManager.message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .onTapGesture {
+                            Task {
+                                await helperToolManager.manageHelperTool()
+                            }
                         }
+
+                    Spacer()
+
+                    Button(action: {
+                        helperToolManager.openSMSettings()
+                    }) {
+                        Label("Settings", systemImage: "gear")
+                            .padding(4)
                     }
-
-                Spacer()
-
-                Button(action: {
-                    helperToolManager.openSMSettings()
-                }) {
-                    Label("Settings", systemImage: "gear")
-                        .padding(4)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.secondary)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.secondary)
-            }
 
+                Divider()
 
-            Divider()
+                HStack {
+                    TextField("Enter command here", text: $commandToRun)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            Task {
+                                await helperToolManager.runCommand(commandToRun) { output in
+                                    commandOutput = output
+                                }
+                            }
+                        }
 
-
-            HStack {
-                TextField("Enter command here", text: $commandToRun)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
-                    .textFieldStyle(.plain)
-                    .onSubmit {
+                    Button(action: {
                         Task {
                             await helperToolManager.runCommand(commandToRun) { output in
                                 commandOutput = output
                             }
                         }
+                    }) {
+                        Label("Execute", systemImage: "play")
+                            .padding(4)
                     }
-
-                Button(action: {
-                    Task {
-                        await helperToolManager.runCommand(commandToRun) { output in
-                            commandOutput = output
-                        }
-                    }
-                }) {
-                    Label("Execute", systemImage: "play")
-                        .padding(4)
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
 
+                ScrollView {
+                    Text(commandOutput)
+                        .textSelection(.enabled)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                        .padding()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.tertiary.opacity(0.1))
+                .cornerRadius(8)
             }
-
-            ScrollView {
-                Text(commandOutput)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .padding()
+            .frame(minHeight: 300)
+            
+            // Bottom section: ESLogger event list
+            VStack(alignment: .leading, spacing: 8) {
+                Divider()
+                
+                HStack {
+                    Text("File Creation Monitor")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                }
+                
+                if let esloggerManager = esloggerManager {
+                    EventListView(esloggerManager: esloggerManager, dataStore: dataStore)
+                } else {
+                    Text("Initializing ESLogger...")
+                        .foregroundStyle(.secondary)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.tertiary.opacity(0.1))
-            .cornerRadius(8)
+            .frame(minHeight: 250)
         }
         .padding()
         .navigationTitle("Helper tool is \(helperToolManager.status.lowercased())")
@@ -104,6 +135,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task {
                 await helperToolManager.manageHelperTool()
+            }
+        }
+        .onAppear {
+            // Initialize ESLoggerManager with the same helperToolManager instance
+            if esloggerManager == nil {
+                esloggerManager = ESLoggerManager(helperToolManager: helperToolManager, dataStore: dataStore)
             }
         }
     }
