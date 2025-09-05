@@ -30,28 +30,6 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
     private var isStreaming = false
     private var streamingProcess: Process?
     
-    // Debug logging
-    private var debugLogs: [String] = []
-    private let debugLogLock = NSLock()
-    
-    private func addDebugLog(_ message: String) {
-        debugLogLock.lock()
-        defer { debugLogLock.unlock() }
-        
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "HH:mm:ss.SSS"
-        let timestamp = dateFormatter.string(from: Date())
-        debugLogs.append("[\(timestamp)] \(message)")
-        
-        // Keep only last 100 debug messages
-        if debugLogs.count > 100 {
-            debugLogs.removeFirst(debugLogs.count - 100)
-        }
-        
-        // Also print to stderr for daemon logs
-        fputs("HELPER DEBUG: \(message)\n", stderr)
-        fflush(stderr)
-    }
     // Accept new XPC connections by setting up the exported interface and object.
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
         // Validate that the main app and helper app have the same code signing identity, otherwise return

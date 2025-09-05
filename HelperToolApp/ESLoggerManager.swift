@@ -13,7 +13,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     private let dataStore: FileCreationDataStore
     
     @Published var isRunning = false
-    @Published var recentEvents: [FileCreationEvent] = []
     @Published var totalEventCount = 0
     @Published var statusMessage = "ESLogger stopped"
     
@@ -22,9 +21,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     // Temporary storage for create events that might be temp files (only for true rename correlation)
     private var pendingCreateEvents: [String: FileCreationEvent] = [:]
     
-    private func addDebugLog(_ message: String) {
-        // Remove console logging to clean up output
-    }
     
     init(helperToolManager: HelperToolManager, dataStore: FileCreationDataStore) {
         self.helperToolManager = helperToolManager
@@ -258,13 +254,7 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     
     private func addEventToStore(_ event: FileCreationEvent) {
         dataStore.addEvent(event)
-        recentEvents.append(event)
         totalEventCount += 1
-        
-        // Keep recent events list manageable
-        if recentEvents.count > 100 {
-            recentEvents.removeFirst(recentEvents.count - 100)
-        }
     }
     
     

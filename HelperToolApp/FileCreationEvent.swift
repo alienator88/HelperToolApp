@@ -49,7 +49,9 @@ class FileCreationEvent: ObservableObject, Identifiable {
         self.createdPath = createdPath
         self.eventType = eventType
         self.sourcePath = sourcePath
-        self.timestamp = Date()
+        // Parse the actual ESLogger timestamp from ISO8601 string
+        let formatter = ISO8601DateFormatter()
+        self.timestamp = formatter.date(from: timeISO8601) ?? Date()
         self.appBundle = appBundle
     }
     
@@ -58,12 +60,7 @@ class FileCreationEvent: ObservableObject, Identifiable {
     }
     
     var displayDescription: String {
-        if eventType == "rename", let source = sourcePath {
-            let sourceName = URL(fileURLWithPath: source).lastPathComponent
-            return "Renamed \(sourceName) → \(fileName)"
-        } else {
-            return "Created \(fileName)"
-        }
+        return "Created \(fileName)"
     }
 }
 
@@ -72,8 +69,6 @@ class FileCreationDataStore: ObservableObject {
     @Published var appBundles: [AppBundle] = []
     @Published var allEvents: [FileCreationEvent] = []
     
-    // Track temporary file to final name correlations
-    private var tempFileCorrelations: [String: String] = [:]
     
     func findOrCreateAppBundle(bundlePath: String) -> AppBundle {
         if let existingBundle = appBundles.first(where: { $0.bundlePath == bundlePath }) {
@@ -87,28 +82,6 @@ class FileCreationDataStore: ObservableObject {
     }
     
     func addEvent(_ event: FileCreationEvent) {
-        // Handle rename events - correlate temp files with final names
-        if event.eventType == "rename", let sourcePath = event.sourcePath {
-            // If this is a rename from a temp file to a real name, record the correlation
-            if sourcePath.contains(".dat.nosync") || sourcePath.hasPrefix(".tmp") {
-                tempFileCorrelations[sourcePath] = event.createdPath
-                
-                // Try to update any existing create event for this temp file
-                if let tempEvent = allEvents.first(where: { $0.createdPath == sourcePath && $0.eventType == "create" }) {
-                    tempEvent.createdPath = event.createdPath
-                    print("✅ Updated temp file correlation: \(sourcePath) → \(event.createdPath)")
-                }
-            }
-        }
-        
-        // Handle create events - check if we already know the final name for this temp file
-        if event.eventType == "create" {
-            if let finalName = tempFileCorrelations[event.createdPath] {
-                event.createdPath = finalName
-                print("✅ Applied known correlation for create event: \(event.createdPath)")
-            }
-        }
-        
         allEvents.append(event)
         event.appBundle?.events.append(event)
         event.appBundle?.lastSeen = Date()
@@ -118,17 +91,13 @@ class FileCreationDataStore: ObservableObject {
             let eventsToRemove = Array(allEvents.prefix(allEvents.count - 5000))
             allEvents.removeFirst(allEvents.count - 5000)
             
-            // Clean up app bundle references and correlations
+            // Clean up app bundle references
             for event in eventsToRemove {
                 if let bundle = event.appBundle {
                     bundle.events.removeAll { $0.id == event.id }
                 }
             }
             
-            // Clean up old correlations
-            if tempFileCorrelations.count > 100 {
-                tempFileCorrelations.removeAll()
-            }
         }
     }
     

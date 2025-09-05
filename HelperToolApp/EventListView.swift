@@ -240,16 +240,21 @@ struct EventRowView: View {
                 
                 Spacer()
                 
-                // Timestamp
-                Text(event.timestamp, style: .time)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                // Full date and timestamp
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(event.timestamp, style: .date)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(event.timestamp, style: .time)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             
             // Event description
             HStack {
-                Image(systemName: event.eventType == "rename" ? "arrow.right" : "doc")
-                    .foregroundStyle(event.eventType == "rename" ? .orange : .blue)
+                Image(systemName: "doc")
+                    .foregroundStyle(.blue)
                     .font(.caption)
                 
                 Text(event.displayDescription)
