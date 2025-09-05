@@ -52,7 +52,7 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
                 guard let self = self else { return }
                 
                 if success {
-                    self.statusMessage = "Real-time monitoring active - events appear instantly"
+                    self.statusMessage = "Real-time monitoring active"
                 } else {
                     self.isRunning = false
                     self.isStreamingMode = false
@@ -80,13 +80,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     func didReceiveJSONLine(_ jsonLine: String) {
         // Process the JSON line immediately
         if let event = parseJSONLine(jsonLine) {
-            // Debug logging for test files
-            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
-                print("🔍 STREAM DEBUG: Processing \(event.eventType) event for: \(event.createdPath)")
-                if let sourcePath = event.sourcePath {
-                    print("🔍 STREAM DEBUG: Source path: \(sourcePath)")
-                }
-            }
             processEvent(event)
         }
     }
@@ -188,7 +181,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
                 )
             }
         default:
-            print("🔍 DEBUG: Unknown event type: \(msg.event_type)")
             return nil
         }
         return nil
@@ -227,23 +219,11 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
                         (fileName.hasPrefix(".") && fileName.count > 20 && fileName != ".DS_Store") ||
                         (fileName.contains(".") && fileName.components(separatedBy: ".").count > 3)
         
-        // Debug logging for test files
-        if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
-            print("🔍 CREATE DEBUG: File \(fileName), isTempFile: \(isTempFile)")
-        }
-        
         if isTempFile {
             // Store temp file creates, wait for rename events to provide final names
             pendingCreateEvents[event.createdPath] = event
-            
-            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
-                print("🔍 CREATE DEBUG: Storing temp file, waiting for rename: \(event.createdPath)")
-            }
         } else {
             // Non-temp file, add immediately
-            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
-                print("🔍 CREATE DEBUG: Adding non-temp file immediately: \(event.createdPath)")
-            }
             addEventToStore(event)
         }
     }
@@ -252,18 +232,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
         guard let sourcePath = event.sourcePath else {
             addEventToStore(event)
             return
-        }
-        
-        // Debug logging for test files
-        if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") || 
-           sourcePath.contains("StreamTest") || sourcePath.contains("eslogger") {
-            print("🔍 RENAME DEBUG: \(sourcePath) → \(event.createdPath)")
-            print("🔍 RENAME DEBUG: Pending creates count: \(pendingCreateEvents.count)")
-            if pendingCreateEvents[sourcePath] != nil {
-                print("🔍 RENAME DEBUG: Found matching pending create for: \(sourcePath)")
-            } else {
-                print("🔍 RENAME DEBUG: No pending create found for: \(sourcePath)")
-            }
         }
         
         // Check if we have a pending create event for the source path
@@ -279,16 +247,9 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
                 appBundle: pendingCreate.appBundle
             )
             
-            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
-                print("🔍 RENAME DEBUG: Creating correlated event with final name: \(event.createdPath)")
-            }
-            
             addEventToStore(correlatedEvent)
         } else {
             // No pending create, treat as regular rename
-            if event.createdPath.contains("StreamTest") || event.createdPath.contains("eslogger") {
-                print("🔍 RENAME DEBUG: Adding as regular rename: \(event.createdPath)")
-            }
             addEventToStore(event)
         }
     }
@@ -296,7 +257,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     
     
     private func addEventToStore(_ event: FileCreationEvent) {
-        addDebugLog("Adding event to UI: \(event.eventType) - \(event.fileName) (pending: \(pendingCreateEvents.count))")
         dataStore.addEvent(event)
         recentEvents.append(event)
         totalEventCount += 1
@@ -305,113 +265,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
         if recentEvents.count > 100 {
             recentEvents.removeFirst(recentEvents.count - 100)
         }
-    }
-    
-    
-    
-    // Test function to create a file after 2 seconds when monitoring starts
-    private func scheduleTestFileCreation() {
-        Task {
-            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            
-            await createTestFile()
-            
-            // Test different file creation methods
-            try await Task.sleep(nanoseconds: 2_000_000_000) // Wait 2 more seconds
-            
-            await testDifferentFileCreationMethods()
-        }
-    }
-    
-    private func createTestFile() async {
-        let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-        guard let downloadsPath = downloadsURL?.path else {
-            print("Could not find Downloads directory")
-            return
-        }
-        
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let timestamp = dateFormatter.string(from: Date())
-        
-        let testFileName = "ESLogger_Test_\(timestamp).txt"
-        let testFilePath = "\(downloadsPath)/eslogger/\(testFileName)"
-
-        let testContent = """
-        ESLogger Test File
-        Created: \(Date())
-        Purpose: Testing file creation monitoring in HelperToolApp
-        
-        This file was created by the HelperToolApp to test the ESLogger integration.
-        You should see this file creation event appear in the monitoring interface.
-        """
-        
-        do {
-            try testContent.write(toFile: testFilePath, atomically: true, encoding: .utf8)
-            
-            DispatchQueue.main.async { [weak self] in
-                self?.statusMessage = "Test file created in Downloads - watch for event!"
-            }
-            
-            // Update status back to normal after 3 seconds
-            Task {
-                try await Task.sleep(nanoseconds: 3_000_000_000)
-                DispatchQueue.main.async { [weak self] in
-                    if self?.isRunning == true {
-                        self?.statusMessage = "ESLogger running - monitoring file creation..."
-                    }
-                }
-            }
-            
-        } catch {
-            DispatchQueue.main.async { [weak self] in
-                self?.statusMessage = "Failed to create test file: \(error.localizedDescription)"
-            }
-        }
-    }
-    
-    private func testDifferentFileCreationMethods() async {
-        let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-        guard let downloadsPath = downloadsURL?.path else { return }
-        
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let timestamp = dateFormatter.string(from: Date())
-        
-        // Test 1: Non-atomic Swift write
-        let nonAtomicFile = "\(downloadsPath)/eslogger/NonAtomic_Test_\(timestamp).txt"
-        let testContent = "Non-atomic test file created at \(Date())"
-        
-        do {
-            try testContent.write(toFile: nonAtomicFile, atomically: false, encoding: .utf8)
-        } catch {
-            // Ignore errors for test purposes
-        }
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
-        
-        // Test 2: Using touch via helper tool
-        let touchFile = "\(downloadsPath)/eslogger/Touch_Test_\(timestamp).txt"
-        await helperToolManager.runCommand("touch '\(touchFile)'") { output in
-            print("Touch command result: \(output.isEmpty ? "SUCCESS" : output)")
-        }
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
-        
-        // Test 3: Using direct FileManager
-        let fileManagerFile = "\(downloadsPath)/eslogger/FileManager_Test_\(timestamp).txt"
-        print("Creating FileManager file: \(fileManagerFile)")
-        FileManager.default.createFile(atPath: fileManagerFile, contents: testContent.data(using: .utf8), attributes: nil)
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
-        
-        // Test 4: Manual file operations (open, write, close)
-        let manualFile = "\(downloadsPath)/eslogger/Manual_Test_\(timestamp).txt"
-        await helperToolManager.runCommand("echo 'Manual test content' > '\(manualFile)'") { output in
-            print("Manual file creation result: \(output.isEmpty ? "SUCCESS" : output)")
-        }
-        
-        print("Completed different file creation method tests")
     }
     
     

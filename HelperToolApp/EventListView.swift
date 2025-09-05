@@ -185,9 +185,9 @@ struct EventListView: View {
             
             // Create different types of test files to verify streaming
             let testFiles = [
-                ("StreamTest_Direct_\(timestamp).txt", "Direct file creation test at \(Date())"),
-                ("StreamTest_Atomic_\(timestamp).txt", "Atomic file creation test at \(Date())"),
-                ("StreamTest_Data_\(timestamp).json", #"{"test": "data", "timestamp": "\#(timestamp)", "type": "streaming_test"}"#)
+                ("Direct_\(timestamp).txt", "Direct file creation test at \(Date())"),
+                ("Atomic_\(timestamp).txt", "Atomic file creation test at \(Date())"),
+                ("JSON_\(timestamp).json", #"{"test": "data", "timestamp": "\#(timestamp)", "type": "streaming_test"}"#)
             ]
             
             for (index, (fileName, content)) in testFiles.enumerated() {
@@ -202,25 +202,19 @@ struct EventListView: View {
                 if fileName.contains("Direct") {
                     // Direct file creation (non-atomic)
                     FileManager.default.createFile(atPath: filePath, contents: content.data(using: .utf8), attributes: nil)
-                    print("Created direct file: \(fileName)")
                 } else if fileName.contains("Atomic") {
                     // Atomic file creation (should show temp file then rename)
-                    print("Creating atomic file: \(fileName)")
                     try? content.write(toFile: filePath, atomically: true, encoding: .utf8)
-                    print("Atomic file creation completed: \(fileName)")
                 } else {
                     // Data write
                     try? content.data(using: .utf8)?.write(to: URL(fileURLWithPath: filePath))
-                    print("Created data file: \(fileName)")
                 }
                 
                 // Add longer delay to ensure eslogger captures events
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                 
-                print("Created test file: \(fileName)")
             }
             
-            print("Created \(testFiles.count) test files in Downloads/eslogger/ - check streaming for real-time events!")
         }
     }
 }
