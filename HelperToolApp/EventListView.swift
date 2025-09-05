@@ -231,10 +231,18 @@ struct EventRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                // App name
-                Text(event.appBundle?.displayName ?? "Unknown App")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                // App name and bundle path
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.appBundle?.displayName ?? "Unknown App")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    
+                    Text(event.appBundle?.bundlePath ?? "Unknown Path")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 
                 Spacer()
                 

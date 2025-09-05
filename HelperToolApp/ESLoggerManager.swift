@@ -114,6 +114,10 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
             guard let pathInfo = extractPathInfo(from: msg) else { return nil }
             
             let exec = msg.process.executable.path
+            
+            // Only process events from app bundles (.app) in user directories or /Applications
+            guard exec.contains(".app/") && (exec.hasPrefix("/Users/") || exec.hasPrefix("/Applications/")) else { return nil }
+            
             let bundlePath = extractBundlePath(from: exec) ?? exec
             let appBundle = dataStore.findOrCreateAppBundle(bundlePath: bundlePath)
             
