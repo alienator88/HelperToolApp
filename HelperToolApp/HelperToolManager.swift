@@ -9,10 +9,6 @@ import ServiceManagement
 @objc(HelperToolProtocol)
 public protocol HelperToolProtocol {
     func runCommand(command: String, withReply reply: @escaping (String) -> Void)
-    func startESLogger(withReply reply: @escaping (Bool, String?) -> Void)
-    func stopESLogger(withReply reply: @escaping (Bool, String?) -> Void)
-    func getESLoggerEvents(withReply reply: @escaping ([String]) -> Void)
-    func runESLoggerForDuration(duration: Double, withReply reply: @escaping (String?, String?) -> Void)
     func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
     func stopESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
 }
@@ -158,113 +154,7 @@ class HelperToolManager: ObservableObject, ESLoggerStreamDelegate {
 
 
     // ESLogger management functions
-    func startESLogger(completion: @escaping (Bool, String?) -> Void) async {
-        guard isHelperToolInstalled else {
-            completion(false, "Helper tool is not installed")
-            return
-        }
-        
-        guard let connection = getConnection() else {
-            completion(false, "XPC: Connection not available")
-            return
-        }
-        
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-            DispatchQueue.main.async {
-                completion(false, "XPC: Connection error: \(error.localizedDescription)")
-            }
-        }) as? HelperToolProtocol else {
-            completion(false, "XPC: Failed to get remote object")
-            return
-        }
-        
-        proxy.startESLogger { success, error in
-            DispatchQueue.main.async {
-                completion(success, error)
-            }
-        }
-    }
     
-    func stopESLogger(completion: @escaping (Bool, String?) -> Void) async {
-        guard isHelperToolInstalled else {
-            completion(false, "Helper tool is not installed")
-            return
-        }
-        
-        guard let connection = getConnection() else {
-            completion(false, "XPC: Connection not available")
-            return
-        }
-        
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-            DispatchQueue.main.async {
-                completion(false, "XPC: Connection error: \(error.localizedDescription)")
-            }
-        }) as? HelperToolProtocol else {
-            completion(false, "XPC: Failed to get remote object")
-            return
-        }
-        
-        proxy.stopESLogger { success, error in
-            DispatchQueue.main.async {
-                completion(success, error)
-            }
-        }
-    }
-    
-    func getESLoggerEvents(completion: @escaping ([String]) -> Void) async {
-        guard isHelperToolInstalled else {
-            completion([])
-            return
-        }
-        
-        guard let connection = getConnection() else {
-            completion([])
-            return
-        }
-        
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-            DispatchQueue.main.async {
-                completion([])
-            }
-        }) as? HelperToolProtocol else {
-            completion([])
-            return
-        }
-        
-        proxy.getESLoggerEvents { events in
-            DispatchQueue.main.async {
-                completion(events)
-            }
-        }
-    }
-    
-    func runESLoggerForDuration(duration: Double, completion: @escaping (String?, String?) -> Void) async {
-        guard isHelperToolInstalled else {
-            completion(nil, "Helper tool is not installed")
-            return
-        }
-        
-        guard let connection = getConnection() else {
-            completion(nil, "XPC: Connection not available")
-            return
-        }
-        
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-            DispatchQueue.main.async {
-                completion(nil, "XPC: Connection error: \(error.localizedDescription)")
-            }
-        }) as? HelperToolProtocol else {
-            completion(nil, "XPC: Failed to get remote object")
-            return
-        }
-        
-        proxy.runESLoggerForDuration(duration: duration) { jsonOutput, error in
-            DispatchQueue.main.async {
-                completion(jsonOutput, error)
-            }
-        }
-    }
     
     // Kickstart the privileged helper service
     func kickstartService(completion: @escaping (String) -> Void) async {

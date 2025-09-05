@@ -17,7 +17,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     @Published var totalEventCount = 0
     @Published var statusMessage = "ESLogger stopped"
     
-    private var eventPollingTimer: Timer?
     private var isStreamingMode = false
     
     // Temporary storage for create events that might be temp files (only for true rename correlation)
@@ -35,67 +34,7 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
         helperToolManager.streamDelegate = self
     }
     
-    func startESLogger() {
-        Task {
-            await helperToolManager.startESLogger { [weak self] success, error in
-                guard let self = self else { return }
-                
-                if success {
-                    self.isRunning = true
-                    self.statusMessage = "ESLogger running - monitoring file creation..."
-                    self.startPollingForEvents()
-                    self.scheduleTestFileCreation()
-                } else {
-                    self.statusMessage = "Failed to start ESLogger: \(error ?? "Unknown error")"
-                }
-            }
-        }
-    }
     
-    func stopESLogger() {
-        Task {
-            await helperToolManager.stopESLogger { [weak self] success, error in
-                guard let self = self else { return }
-                
-                self.isRunning = false
-                self.statusMessage = success ? "ESLogger stopped" : "Error stopping ESLogger: \(error ?? "Unknown")"
-                self.stopPollingForEvents()
-            }
-        }
-    }
-    
-    // New simplified approach: run eslogger for a short duration and get raw JSON
-    func runESLoggerSession(duration: Double = 5.0) {
-        guard !isRunning else {
-            statusMessage = "Already running a session"
-            return
-        }
-        
-        isRunning = true
-        statusMessage = "Running ESLogger session for \(duration) seconds..."
-        
-        Task {
-            await helperToolManager.runESLoggerForDuration(duration: duration) { [weak self] jsonOutput, error in
-                guard let self = self else { return }
-                
-                self.isRunning = false
-                
-                if let error = error {
-                    self.statusMessage = "ESLogger session failed: \(error)"
-                    return
-                }
-                
-                guard let jsonOutput = jsonOutput, !jsonOutput.isEmpty else {
-                    self.statusMessage = "ESLogger session completed - no events captured"
-                    return
-                }
-                
-                // Process the raw JSON
-                let eventCount = self.processRawJSON(jsonOutput)
-                self.statusMessage = "ESLogger session completed - processed \(eventCount) events"
-            }
-        }
-    }
     
     // New streaming methods
     func startESLoggerStreaming() {
@@ -164,27 +103,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
         statusMessage = "Streaming error: \(error)"
     }
     
-    private func processRawJSON(_ jsonString: String) -> Int {
-        let lines = jsonString.components(separatedBy: .newlines)
-        var processedCount = 0
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedLine.isEmpty && 
-                  trimmedLine.first == "{" && 
-                  trimmedLine.last == "}" && 
-                  trimmedLine.count > 10 else { // Basic JSON validation
-                continue
-            }
-            
-            if let event = parseJSONLine(trimmedLine) {
-                processEvent(event)
-                processedCount += 1
-            }
-        }
-        
-        return processedCount
-    }
     
     private func parseJSONLine(_ line: String) -> FileCreationEvent? {
         guard let data = line.data(using: .utf8) else { return nil }
@@ -371,136 +289,7 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
         }
     }
     
-    private func startPollingForEvents() {
-        eventPollingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.pollForEvents()
-            }
-        }
-    }
     
-    private func stopPollingForEvents() {
-        eventPollingTimer?.invalidate()
-        eventPollingTimer = nil
-    }
-    
-    private func pollForEvents() {
-        Task {
-            await helperToolManager.getESLoggerEvents { [weak self] eventStrings in
-                guard let self = self else { return }
-                
-                if !eventStrings.isEmpty {
-                    self.processNewEvents(eventStrings)
-                }
-            }
-        }
-    }
-    
-    private func processNewEvents(_ eventStrings: [String]) {
-        addDebugLog("Processing \(eventStrings.count) new events")
-        
-        for eventString in eventStrings {
-            if let parsedEvent = parseEventString(eventString) {
-                addDebugLog("Parsed event: \(parsedEvent.eventType) - \(parsedEvent.createdPath)")
-                
-                if parsedEvent.eventType == "create" {
-                    handleCreateEvent(parsedEvent: parsedEvent)
-                } else if parsedEvent.eventType == "rename" {
-                    handleRenameEvent(parsedEvent: parsedEvent)
-                }
-            } else {
-                addDebugLog("Failed to parse event string: \(eventString)")
-            }
-        }
-        
-        // Clean up old pending events that never got renamed
-        cleanupOldPendingEvents()
-    }
-    
-    private func handleCreateEvent(parsedEvent: (timeISO8601: String, pid: Int, bundlePath: String?, createdPath: String, eventType: String, sourcePath: String?)) {
-        // Check if this looks like a temporary file
-        let fileName = URL(fileURLWithPath: parsedEvent.createdPath).lastPathComponent
-        let isTempFile = fileName.contains(".tmp") || 
-                        fileName.contains(".nosync") || 
-                        fileName.hasPrefix(".dat") ||
-                        fileName.contains("Temp") ||
-                        fileName.contains("temp") ||
-                        (fileName.hasPrefix(".") && fileName.count > 20 && fileName != ".DS_Store") || // Long hidden files are often temp
-                        (fileName.contains(".") && fileName.components(separatedBy: ".").count > 3) // Files with multiple dots are often temp
-        
-        addDebugLog("Create event - File: \(fileName), IsTempFile: \(isTempFile)")
-        
-        let appBundle = dataStore.findOrCreateAppBundle(bundlePath: parsedEvent.bundlePath ?? "Unknown")
-        let event = FileCreationEvent(
-            timeISO8601: parsedEvent.timeISO8601,
-            pid: parsedEvent.pid,
-            execPath: "Unknown",
-            createdPath: parsedEvent.createdPath,
-            eventType: parsedEvent.eventType,
-            sourcePath: parsedEvent.sourcePath,
-            appBundle: appBundle
-        )
-        
-        if isTempFile {
-            // Store temp file creates, wait for rename events to provide final names
-            addDebugLog("Storing temp file create, waiting for rename: \(parsedEvent.createdPath)")
-            pendingCreateEvents[parsedEvent.createdPath] = event
-        } else {
-            // Non-temp file, add immediately
-            addDebugLog("Adding non-temp create event: \(parsedEvent.createdPath)")
-            addEventToStore(event)
-        }
-    }
-    
-    private func handleRenameEvent(parsedEvent: (timeISO8601: String, pid: Int, bundlePath: String?, createdPath: String, eventType: String, sourcePath: String?)) {
-        guard let sourcePath = parsedEvent.sourcePath else {
-            addDebugLog("Rename event without source path, treating as regular event")
-            let appBundle = dataStore.findOrCreateAppBundle(bundlePath: parsedEvent.bundlePath ?? "Unknown")
-            let event = FileCreationEvent(
-                timeISO8601: parsedEvent.timeISO8601,
-                pid: parsedEvent.pid,
-                execPath: "Unknown",
-                createdPath: parsedEvent.createdPath,
-                eventType: parsedEvent.eventType,
-                sourcePath: parsedEvent.sourcePath,
-                appBundle: appBundle
-            )
-            addEventToStore(event)
-            return
-        }
-        
-        // Check if we have a pending create event for the source path
-        if let pendingCreate = pendingCreateEvents.removeValue(forKey: sourcePath) {
-            addDebugLog("SUCCESS: Correlating rename \(sourcePath) -> \(parsedEvent.createdPath) with pending create")
-            
-            // Update the pending create event to show as a rename with final name
-            let correlatedEvent = FileCreationEvent(
-                timeISO8601: pendingCreate.timeISO8601, // Use original create time
-                pid: pendingCreate.pid,
-                execPath: pendingCreate.execPath,
-                createdPath: parsedEvent.createdPath, // Final name
-                eventType: "rename",
-                sourcePath: sourcePath, // Original temp name
-                appBundle: pendingCreate.appBundle
-            )
-            
-            addEventToStore(correlatedEvent)
-        } else {
-            // No pending create, treat as regular rename
-            addDebugLog("No pending create for rename \(sourcePath) -> \(parsedEvent.createdPath)")
-            let appBundle = dataStore.findOrCreateAppBundle(bundlePath: parsedEvent.bundlePath ?? "Unknown")
-            let event = FileCreationEvent(
-                timeISO8601: parsedEvent.timeISO8601,
-                pid: parsedEvent.pid,
-                execPath: "Unknown",
-                createdPath: parsedEvent.createdPath,
-                eventType: parsedEvent.eventType,
-                sourcePath: parsedEvent.sourcePath,
-                appBundle: appBundle
-            )
-            addEventToStore(event)
-        }
-    }
     
     private func addEventToStore(_ event: FileCreationEvent) {
         addDebugLog("Adding event to UI: \(event.eventType) - \(event.fileName) (pending: \(pendingCreateEvents.count))")
@@ -515,59 +304,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     }
     
     
-    private func cleanupOldPendingEvents() {
-        // Clean up old pending events (older than 30 seconds) to prevent memory growth
-        // These are temp files that never got a corresponding rename event
-        let currentTime = Date()
-        let dateFormatter = ISO8601DateFormatter()
-        let cleanupTimeout: TimeInterval = 30.0
-        
-        let oldCount = pendingCreateEvents.count
-        pendingCreateEvents = pendingCreateEvents.filter { (path, event) in
-            if let eventDate = dateFormatter.date(from: event.timeISO8601) {
-                return currentTime.timeIntervalSince(eventDate) < cleanupTimeout
-            }
-            return true // Keep if we can't parse date
-        }
-        
-        if pendingCreateEvents.count < oldCount {
-            print("🧹 Cleaned up \(oldCount - pendingCreateEvents.count) old pending temp file events")
-        }
-    }
-    
-    private func parseEventString(_ eventString: String) -> (timeISO8601: String, pid: Int, bundlePath: String?, createdPath: String, eventType: String, sourcePath: String?)? {
-        let components = eventString.components(separatedBy: "|")
-        guard components.count == 6 else { 
-            // Handle old format for backwards compatibility
-            if components.count == 4 {
-                guard let pid = Int(components[1]) else { return nil }
-                let bundlePath = components[2] == "Unknown" ? nil : components[2]
-                return (
-                    timeISO8601: components[0],
-                    pid: pid,
-                    bundlePath: bundlePath,
-                    createdPath: components[3],
-                    eventType: "create",
-                    sourcePath: nil
-                )
-            }
-            return nil
-        }
-        
-        guard let pid = Int(components[1]) else { return nil }
-        
-        let bundlePath = components[2] == "Unknown" ? nil : components[2]
-        let sourcePath = components[5].isEmpty ? nil : components[5]
-        
-        return (
-            timeISO8601: components[0],
-            pid: pid,
-            bundlePath: bundlePath,
-            createdPath: components[3],
-            eventType: components[4],
-            sourcePath: sourcePath
-        )
-    }
     
     // Test function to create a file after 2 seconds when monitoring starts
     private func scheduleTestFileCreation() {
@@ -660,12 +396,8 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
         
         // Test 3: Using direct FileManager
         let fileManagerFile = "\(downloadsPath)/eslogger/FileManager_Test_\(timestamp).txt"
-        do {
-            print("Creating FileManager file: \(fileManagerFile)")
-            FileManager.default.createFile(atPath: fileManagerFile, contents: testContent.data(using: .utf8), attributes: nil)
-        } catch {
-            print("Failed to create FileManager file: \(error)")
-        }
+        print("Creating FileManager file: \(fileManagerFile)")
+        FileManager.default.createFile(atPath: fileManagerFile, contents: testContent.data(using: .utf8), attributes: nil)
         
         try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
         
@@ -679,9 +411,4 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
     }
     
     
-    deinit {
-        Task { @MainActor in
-            stopPollingForEvents()
-        }
-    }
 }

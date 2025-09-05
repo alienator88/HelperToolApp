@@ -10,10 +10,6 @@ import Foundation
 @objc(HelperToolProtocol)
 public protocol HelperToolProtocol {
     func runCommand(command: String, withReply reply: @escaping (String) -> Void)
-    func startESLogger(withReply reply: @escaping (Bool, String?) -> Void)
-    func stopESLogger(withReply reply: @escaping (Bool, String?) -> Void)
-    func getESLoggerEvents(withReply reply: @escaping ([String]) -> Void)
-    func runESLoggerForDuration(duration: Double, withReply reply: @escaping (String?, String?) -> Void)
     func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
     func stopESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
 }
@@ -28,9 +24,6 @@ public protocol ESLoggerStreamDelegate {
 
 // XPC Communication setup
 class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
-    private let esloggerService = ESLoggerService()
-    private var eventBuffer: [CreateEvent] = []
-    private let eventBufferLock = NSLock()
     
     // Streaming state
     private var streamingConnection: NSXPCConnection?
@@ -101,207 +94,12 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
     }
 
     // ESLogger management functions
-    func startESLogger(withReply reply: @escaping (Bool, String?) -> Void) {
-        // Direct stderr logging that should appear in Console.app
-        fputs("🚀 HELPER XPC: startESLogger called at \(Date())\n", stderr)
-        fflush(stderr)
-        
-        // Create simple file log to verify this function is called - use /tmp for root access
-        let logMessage = "🚀 MAIN HELPER: startESLogger called at \(Date())\n"
-        let logURL = URL(fileURLWithPath: "/tmp/helper_main_debug.log")
-        
-        if let data = logMessage.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logURL.path) {
-                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                    fileHandle.closeFile()
-                }
-            } else {
-                try? data.write(to: logURL)
-            }
-        }
-        
-        addDebugLog("Helper tool startESLogger called")
-        
-        // Set up debug logging callback
-        esloggerService.onDebugLog = { [weak self] message in
-            self?.addDebugLog("ESLoggerService: \(message)")
-        }
-        
-        let success = esloggerService.startESLogger()
-        
-        // Log the result
-        let resultMessage = "📝 MAIN HELPER: ESLoggerService.startESLogger() returned: \(success)\n"
-        if let data = resultMessage.data(using: .utf8) {
-            if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
-                fileHandle.closeFile()
-            }
-        }
-        
-        if success {
-            addDebugLog("ESLogger service started successfully, setting up event callback")
-            esloggerService.onNewEvent = { [weak self] event in
-                self?.addDebugLog("Received event callback in helper tool")
-                self?.bufferEvent(event)
-            }
-            reply(true, nil)
-        } else {
-            addDebugLog("Failed to start ESLogger service")
-            reply(false, "Failed to start eslogger")
-        }
-    }
     
-    func stopESLogger(withReply reply: @escaping (Bool, String?) -> Void) {
-        esloggerService.stopESLogger()
-        reply(true, nil)
-    }
-    
-    func getESLoggerEvents(withReply reply: @escaping ([String]) -> Void) {
-        // Direct stderr logging that should appear in Console.app
-        fputs("📞 HELPER XPC: getESLoggerEvents called at \(Date())\n", stderr)
-        fflush(stderr)
-        
-        // Log to file to verify this XPC function is being called
-        let logMessage = "📞 MAIN HELPER: getESLoggerEvents called at \(Date())\n"
-        let logURL = URL(fileURLWithPath: "/tmp/helper_get_events_debug.log")
-        
-        if let data = logMessage.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logURL.path) {
-                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                    fileHandle.closeFile()
-                }
-            } else {
-                try? data.write(to: logURL)
-            }
-        }
-        
-        eventBufferLock.lock()
-        defer { eventBufferLock.unlock() }
-        
-        let eventStrings = eventBuffer.map { event in
-            "\(event.timeISO8601)|\(event.pid)|\(event.bundlePath ?? "Unknown")|\(event.createdPath)|\(event.eventType)|\(event.sourcePath ?? "")"
-        }
-        
-        // Log the results
-        let resultMessage = "📊 MAIN HELPER: Returning \(eventStrings.count) events: \(eventStrings.joined(separator: " | "))\n"
-        if let data = resultMessage.data(using: .utf8) {
-            if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
-                fileHandle.closeFile()
-            }
-        }
-        
-        addDebugLog("Returning \(eventStrings.count) events to main app")
-        eventBuffer.removeAll()
-        reply(eventStrings)
-    }
-    
-    func runESLoggerForDuration(duration: Double, withReply reply: @escaping (String?, String?) -> Void) {
-        // Log the XPC call
-        fputs("🎬 HELPER XPC: runESLoggerForDuration called for \(duration) seconds at \(Date())\n", stderr)
-        fflush(stderr)
-        
-        let logMessage = "🎬 MAIN HELPER: runESLoggerForDuration called for \(duration) seconds at \(Date())\n"
-        let logURL = URL(fileURLWithPath: "/tmp/helper_eslogger_run_debug.log")
-        
-        if let data = logMessage.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logURL.path) {
-                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                    fileHandle.closeFile()
-                }
-            } else {
-                try? data.write(to: logURL)
-            }
-        }
-        
-        // Run eslogger for the specified duration and collect all JSON output
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/eslogger")
-        process.arguments = ["create", "rename", "unlink", "copyfile", "exchangedata", "link"]
-        
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-        
-        do {
-            try process.run()
-            
-            // Start a timer to terminate the process after the duration
-            DispatchQueue.global().asyncAfter(deadline: .now() + duration) {
-                process.terminate()
-            }
-            
-            // Wait for the process to finish
-            process.waitUntilExit()
-            
-            // Collect all stdout data (JSON)
-            let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            let jsonOutput = String(data: stdoutData, encoding: .utf8) ?? ""
-            
-            // Collect any stderr data (errors)
-            let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorOutput = String(data: stderrData, encoding: .utf8)
-            
-            // Log results
-            let resultMessage = "📊 MAIN HELPER: Collected \(stdoutData.count) bytes of JSON, \(stderrData.count) bytes stderr\n"
-            if let data = resultMessage.data(using: .utf8) {
-                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                    fileHandle.closeFile()
-                }
-            }
-            
-            if jsonOutput.isEmpty {
-                reply(nil, errorOutput?.isEmpty == false ? errorOutput : "No JSON data collected")
-            } else {
-                reply(jsonOutput, errorOutput?.isEmpty == false ? errorOutput : nil)
-            }
-            
-        } catch {
-            let errorMsg = "Failed to run eslogger: \(error.localizedDescription)"
-            
-            // Log error
-            let errorMessage = "❌ MAIN HELPER: \(errorMsg)\n"
-            if let data = errorMessage.data(using: .utf8) {
-                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                    fileHandle.closeFile()
-                }
-            }
-            
-            reply(nil, errorMsg)
-        }
-    }
+
     
     func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void) {
         fputs("📡 HELPER XPC: startESLoggerStreaming called at \(Date())\n", stderr)
         fflush(stderr)
-        
-        let logMessage = "📡 MAIN HELPER: startESLoggerStreaming called at \(Date())\n"
-        let logURL = URL(fileURLWithPath: "/tmp/helper_streaming_debug.log")
-        
-        if let data = logMessage.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logURL.path) {
-                if let fileHandle = try? FileHandle(forWritingTo: logURL) {
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                    fileHandle.closeFile()
-                }
-            } else {
-                try? data.write(to: logURL)
-            }
-        }
         
         guard !isStreaming else {
             reply(false, "Already streaming")
@@ -396,12 +194,6 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
                 if let jsonLine = String(data: lineData, encoding: .utf8) {
                     let trimmed = jsonLine.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty && trimmed.first == "{" && trimmed.last == "}" && trimmed.count > 10 {
-                        // Debug: log all events for Downloads directory (broader filter)
-                        if trimmed.contains("/Users/alin/Downloads") || trimmed.contains("StreamTest") {
-                            fputs("🔍 HELPER STREAM: Sending JSON: \(String(trimmed.prefix(200)))\n", stderr)
-                            fflush(stderr)
-                        }
-                        
                         Task { @MainActor in
                             delegate?.didReceiveJSONLine(trimmed)
                         }
@@ -416,20 +208,6 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
     
     
     
-    private func bufferEvent(_ event: CreateEvent) {
-        eventBufferLock.lock()
-        defer { eventBufferLock.unlock() }
-        
-        addDebugLog("Buffering event - File: \(event.createdPath), Process: \(event.execPath)")
-        eventBuffer.append(event)
-        
-        // Keep buffer size manageable
-        if eventBuffer.count > 1000 {
-            eventBuffer.removeFirst(eventBuffer.count - 1000)
-        }
-        
-        addDebugLog("Event buffer now contains \(eventBuffer.count) events")
-    }
     
     // Check that the codesigning matches between the main app and the helper app
     private func isValidClient(connection: NSXPCConnection) -> Bool {

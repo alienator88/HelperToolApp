@@ -35,25 +35,7 @@ struct EventListView: View {
                 .buttonStyle(.bordered)
                 .tint(.green)
                 
-                // Session button
-                Button("Run 5s Session") {
-                    esloggerManager.runESLoggerSession()
-                }
-                .buttonStyle(.bordered)
-                .disabled(esloggerManager.isRunning) // Disable when streaming
                 
-                // Legacy polling button (hidden for now)
-                Button("Legacy Mode") {
-                    if esloggerManager.isRunning {
-                        esloggerManager.stopESLogger()
-                    } else {
-                        esloggerManager.startESLogger()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .tint(.secondary)
-                .disabled(esloggerManager.isRunning) // Disable when streaming
-                .opacity(0.5)
                 
                 Spacer()
                 
@@ -62,7 +44,7 @@ struct EventListView: View {
                     Text(esloggerManager.statusMessage)
                         .font(.caption)
                         .foregroundStyle(esloggerManager.isRunning ? .green : .secondary)
-                    Text("Total Events: \(esloggerManager.totalEventCount)")
+                    Text("\(selectedAppBundle == "All Apps" ? "Total" : selectedAppBundle) Events: \(filteredEvents.count)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -79,7 +61,7 @@ struct EventListView: View {
                         Text(appName).tag(appName)
                     }
                 }
-                .frame(width: 150)
+                .frame(width: 200)
             }
             
             // Event list
@@ -88,22 +70,44 @@ struct EventListView: View {
                     Image(systemName: "doc.text")
                         .font(.largeTitle)
                         .foregroundStyle(.tertiary)
-                    Text(esloggerManager.isRunning ? "Waiting for file creation events...\n(Test file will be created in Downloads after 2 seconds)" : "Start monitoring to see file creation events")
+                    Text(esloggerManager.isRunning ? "Waiting for file creation events.." : "Start monitoring to see file creation events")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(filteredEvents, id: \.id) { event in
-                    EventRowView(event: event)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(filteredEvents.enumerated()), id: \.element.id) { index, event in
+                                EventRowView(event: event)
+                                    .id(event.id)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                
+                                // Add divider between events (except for the last one)
+                                if index < filteredEvents.count - 1 {
+                                    Divider()
+                                        .padding(.horizontal, 16)
+                                }
+                            }
+                        }
+                    }
+                    .onChange(of: filteredEvents.count) { _ in
+                        // Auto-scroll to the most recent event for the selected app
+                        if let mostRecentEvent = filteredEvents.first {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                proxy.scrollTo(mostRecentEvent.id, anchor: .top)
+                            }
+                        }
+                    }
                 }
-                .listStyle(.plain)
             }
         }
     }
     
     private var filteredEvents: [FileCreationEvent] {
-        var events = Array(dataStore.allEvents.reversed()) // Convert to Array first
+        var events = Array(dataStore.allEvents) // Don't reverse - keep chronological order
         
         // Filter by app bundle
         if selectedAppBundle != "All Apps" {
@@ -142,7 +146,20 @@ struct EventListView: View {
             filteredForTempFiles.append(event)
         }
         
-        return Array(filteredForTempFiles.prefix(50)) // Limit display for performance
+        // Sort by app name, then by timestamp (newest first within each app)
+        let sortedEvents = filteredForTempFiles.sorted { event1, event2 in
+            let app1 = event1.appBundle?.displayName ?? "Unknown App"
+            let app2 = event2.appBundle?.displayName ?? "Unknown App"
+            
+            if app1 != app2 {
+                return app1 < app2 // Sort by app name alphabetically
+            } else {
+                // Same app - sort by timestamp, newest first
+                return event1.timestamp > event2.timestamp
+            }
+        }
+        
+        return sortedEvents // Show all events with LazyVStack
     }
     
     private var uniqueAppNames: [String] {
