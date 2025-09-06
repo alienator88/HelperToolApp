@@ -219,12 +219,27 @@ struct EventListView: View {
                 
             }
             
+            // Create a test folder
+            let testFolderPath = "\(esloggerDir)/TestFolder_\(timestamp)"
+            try? FileManager.default.createDirectory(atPath: testFolderPath, withIntermediateDirectories: true, attributes: nil)
+            
         }
     }
 }
 
 struct EventRowView: View {
     let event: FileCreationEvent
+    
+    private var isDirectory: Bool {
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: event.createdPath, isDirectory: &isDir)
+        return isDir.boolValue
+    }
+    
+    private func revealInFinder() {
+        let url = URL(fileURLWithPath: event.createdPath)
+        NSWorkspace.shared.selectFile(event.createdPath, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -245,20 +260,15 @@ struct EventRowView: View {
                 Spacer()
                 
                 // Full date and timestamp
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(event.timestamp, style: .date)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(event.timestamp, style: .time)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(event.timestamp, format: .dateTime.month(.twoDigits).day(.twoDigits).year(.twoDigits).hour(.defaultDigits(amPM: .abbreviated)).minute().second())
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             
             // Event description
             HStack {
-                Image(systemName: "doc")
-                    .foregroundStyle(.blue)
+                Image(systemName: isDirectory ? "folder" : "doc")
+                    .foregroundStyle(isDirectory ? .orange : .blue)
                     .font(.caption)
                 
                 Text(event.displayDescription)
@@ -267,6 +277,16 @@ struct EventRowView: View {
                     .foregroundStyle(.primary)
                 
                 Spacer()
+                
+                Button(action: {
+                    revealInFinder()
+                }) {
+                    Image(systemName: "magnifyingglass.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Reveal in Finder")
             }
             
             // Full path
