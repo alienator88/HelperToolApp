@@ -2,7 +2,7 @@
 //  ESLoggerManager.swift
 //  HelperToolApp
 //
-//  Created by Claude on 2025-09-05.
+//  Created by Alin Lupascu on 2025-09-05.
 //
 
 import Foundation
@@ -103,10 +103,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
             guard let pathInfo = extractPathInfo(from: msg) else { return nil }
             
             let exec = msg.process.executable.path
-            
-            // Only process events from app bundles (.app) in user directories or /Applications
-            guard exec.contains(".app/") && (exec.hasPrefix("/Users/") || exec.hasPrefix("/Applications/")) else { return nil }
-            
             let bundlePath = extractBundlePath(from: exec) ?? exec
             let appBundle = dataStore.findOrCreateAppBundle(bundlePath: bundlePath)
             

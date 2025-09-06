@@ -47,6 +47,16 @@
 		C71B35CF2D6E67060010F1BD /* HelperTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = HelperTool; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C74C686F2E6BE7D0003B16F3 /* Exceptions for "HelperToolApp" folder in "HelperTool" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ESLoggerModels.swift,
+			);
+			target = C71B35CE2D6E67060010F1BD /* HelperTool */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 		C7EE5B9C2D77C56400503FC6 /* Exceptions for "HelperTool" folder in "Copy Files" phase from "HelperToolApp" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
@@ -63,6 +73,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C71B35BB2D6E66740010F1BD /* HelperToolApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C74C686F2E6BE7D0003B16F3 /* Exceptions for "HelperToolApp" folder in "HelperTool" target */,
+			);
 			path = HelperToolApp;
 			sourceTree = "<group>";
 		};

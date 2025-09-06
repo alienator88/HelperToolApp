@@ -2,7 +2,7 @@
 //  EventListView.swift
 //  HelperToolApp
 //
-//  Created by Claude on 2025-09-05.
+//  Created by Alin Lupascu on 2025-09-05.
 //
 
 import SwiftUI
@@ -34,9 +34,7 @@ struct EventListView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.green)
-                
-                
-                
+
                 Spacer()
                 
                 // Status and count
@@ -56,9 +54,9 @@ struct EventListView: View {
                     .textFieldStyle(.roundedBorder)
                 
                 Picker("App Bundle", selection: $selectedAppBundle) {
-                    Text("All Apps").tag("All Apps")
+                    Text("All Apps (\(dataStore.allEvents.count))").tag("All Apps")
                     ForEach(uniqueAppNames, id: \.self) { appName in
-                        Text(appName).tag(appName)
+                        Text("\(appName) (\(eventCount(for: appName)))").tag(appName)
                     }
                 }
                 .frame(width: 200)
@@ -164,6 +162,12 @@ struct EventListView: View {
     
     private var uniqueAppNames: [String] {
         return dataStore.uniqueAppNames
+    }
+    
+    private func eventCount(for appName: String) -> Int {
+        return dataStore.allEvents.filter { event in
+            event.appBundle?.displayName == appName
+        }.count
     }
     
     // Create test files to verify streaming is working

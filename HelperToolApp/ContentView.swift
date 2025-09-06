@@ -22,7 +22,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VSplitView {
+        VStack(spacing: 20) {
             // Top section: Existing command interface
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
@@ -79,15 +79,15 @@ struct ContentView: View {
                     Text(commandOutput)
                         .textSelection(.enabled)
                         .font(.system(.body, design: .monospaced))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
                 .background(.tertiary.opacity(0.1))
                 .cornerRadius(8)
             }
-            .frame(minHeight: 300)
-            
+
             // Bottom section: ESLogger event list
             VStack(alignment: .leading, spacing: 8) {
                 Divider()

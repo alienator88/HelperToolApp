@@ -2,7 +2,7 @@
 //  FileCreationEvent.swift
 //  HelperToolApp
 //
-//  Created by Claude on 2025-09-05.
+//  Created by Alin Lupascu on 2025-09-05.
 //
 
 import Foundation

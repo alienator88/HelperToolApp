@@ -148,6 +148,23 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
         reply(true, nil)
     }
     
+    // Filter events to only send .app bundle events from /Users/ or /Applications/
+    private func shouldSendEvent(jsonLine: String) -> Bool {
+        guard let data = jsonLine.data(using: .utf8) else { return false }
+        
+        do {
+            let msg = try JSONDecoder().decode(ESMessage.self, from: data)
+            let exec = msg.process.executable.path
+            
+            // Only send events from .app bundles in /Users/ or /Applications/
+            return exec.contains(".app/") && (exec.hasPrefix("/Users/") || exec.hasPrefix("/Applications/"))
+            
+        } catch {
+            // If parsing fails, skip the event
+            return false
+        }
+    }
+    
     private func streamJSONLines(from pipe: Pipe, to delegate: ESLoggerStreamDelegate?) {
         let handle = pipe.fileHandleForReading
         fputs("🔄 HELPER STREAM: Starting to stream JSON lines\n", stderr)
@@ -172,8 +189,11 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
                 if let jsonLine = String(data: lineData, encoding: .utf8) {
                     let trimmed = jsonLine.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty && trimmed.first == "{" && trimmed.last == "}" && trimmed.count > 10 {
-                        Task { @MainActor in
-                            delegate?.didReceiveJSONLine(trimmed)
+                        // Parse and filter JSON before sending to main app
+                        if shouldSendEvent(jsonLine: trimmed) {
+                            Task { @MainActor in
+                                delegate?.didReceiveJSONLine(trimmed)
+                            }
                         }
                     }
                 }
