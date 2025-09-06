@@ -144,38 +144,6 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
                     sourcePath: renameEvent.source.path
                 )
             }
-        case 32: // ES_EVENT_TYPE_NOTIFY_UNLINK
-            if case .unlink(let unlinkEvent) = msg.event {
-                return (
-                    path: unlinkEvent.target.path,
-                    eventType: "unlink",
-                    sourcePath: nil
-                )
-            }
-        case 12: // ES_EVENT_TYPE_NOTIFY_COPYFILE
-            if case .copyfile(let copyEvent) = msg.event {
-                return (
-                    path: copyEvent.target.path,
-                    eventType: "copyfile",
-                    sourcePath: copyEvent.source.path
-                )
-            }
-        case 33: // ES_EVENT_TYPE_NOTIFY_EXCHANGEDATA
-            if case .exchangedata(let exchangeEvent) = msg.event {
-                return (
-                    path: exchangeEvent.file2.path,
-                    eventType: "exchangedata",
-                    sourcePath: exchangeEvent.file1.path
-                )
-            }
-        case 17: // ES_EVENT_TYPE_NOTIFY_LINK
-            if case .link(let linkEvent) = msg.event {
-                return (
-                    path: linkEvent.target.path,
-                    eventType: "link",
-                    sourcePath: linkEvent.source.path
-                )
-            }
         default:
             return nil
         }

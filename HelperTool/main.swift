@@ -91,7 +91,7 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
         
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/eslogger")
-        process.arguments = ["create", "rename", "unlink", "copyfile", "exchangedata", "link"]
+        process.arguments = ["create", "rename"]
         
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
