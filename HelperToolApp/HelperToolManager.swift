@@ -11,6 +11,7 @@ public protocol HelperToolProtocol {
     func runCommand(command: String, withReply reply: @escaping (String) -> Void)
     func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
     func stopESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
+    func isESLoggerRunning(withReply reply: @escaping (Bool) -> Void)
 }
 
 // Protocol for streaming callbacks from helper to main app
@@ -143,8 +144,21 @@ class HelperToolManager: ObservableObject, ESLoggerStreamDelegate {
         connection.exportedInterface = NSXPCInterface(with: ESLoggerStreamDelegate.self)
         connection.exportedObject = self
         
+        // Handle helper tool disconnection and reconnection
+        connection.interruptionHandler = { [weak self] in
+            Task { @MainActor in
+                self?.handleHelperDisconnection()
+                // Connection will automatically retry, so we sync status after a delay
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                self?.handleHelperReconnection()
+            }
+        }
+        
         connection.invalidationHandler = { [weak self] in
-            self?.helperConnection = nil
+            Task { @MainActor in
+                self?.handleHelperDisconnection()
+                self?.helperConnection = nil
+            }
         }
         connection.resume()
         helperConnection = connection
@@ -155,22 +169,23 @@ class HelperToolManager: ObservableObject, ESLoggerStreamDelegate {
 
     // ESLogger management functions
     
-    
-    // Kickstart the privileged helper service
-    func kickstartService(completion: @escaping (String) -> Void) async {
-        guard isHelperToolInstalled else {
-            completion("❌ Helper tool is not installed. Cannot kickstart service.")
-            return
-        }
-        
-        // Use the helper tool's runCommand to execute the kickstart with root privileges
-        let kickstartCommand = "launchctl kickstart -k system/com.alienator88.HelperApp.HelperTool"
-        
-        await runCommand(kickstartCommand) { output in
-            let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-            completion("🔄 [\(timestamp)] Kickstart Service Output:\n\(output)")
+    private func handleHelperDisconnection() {
+        // Notify the stream delegate that helper is gone
+        if let delegate = streamDelegate {
+            delegate.didErrorStreaming("Helper tool disconnected")
         }
     }
+    
+    private func handleHelperReconnection() {
+        print("🔄 XPC: Attempting helper tool reconnection...")
+        // Notify the stream delegate to sync status
+        if let delegate = streamDelegate as? ESLoggerManager {
+            Task {
+                await delegate.syncStreamingStatusFromUI()
+            }
+        }
+    }
+    
     
     // New streaming methods
     func startESLoggerStreaming(completion: @escaping (Bool, String?) -> Void) async {
@@ -223,6 +238,33 @@ class HelperToolManager: ObservableObject, ESLoggerStreamDelegate {
         proxy.stopESLoggerStreaming { success, error in
             DispatchQueue.main.async {
                 completion(success, error)
+            }
+        }
+    }
+    
+    func isESLoggerRunning(completion: @escaping (Bool) -> Void) async {
+        guard isHelperToolInstalled else {
+            completion(false)
+            return
+        }
+        
+        guard let connection = getConnection() else {
+            completion(false)
+            return
+        }
+        
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            DispatchQueue.main.async {
+                completion(false)
+            }
+        }) as? HelperToolProtocol else {
+            completion(false)
+            return
+        }
+        
+        proxy.isESLoggerRunning { isRunning in
+            DispatchQueue.main.async {
+                completion(isRunning)
             }
         }
     }

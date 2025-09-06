@@ -28,31 +28,71 @@ class ESLoggerManager: ObservableObject, ESLoggerStreamDelegate {
         
         // Set up streaming delegate
         helperToolManager.streamDelegate = self
+        
+        // Check current streaming status on init
+        Task {
+            await syncStreamingStatus()
+        }
     }
     
     
     
+    // Check actual streaming status by querying eslogger running state
+    private func syncStreamingStatus() async {
+        await helperToolManager.isESLoggerRunning { [weak self] isRunning in
+            guard let self = self else { return }
+
+            if isRunning {
+                // eslogger is running, sync UI state
+                self.isRunning = true
+                self.isStreamingMode = true
+                self.statusMessage = "Real-time monitoring active"
+            } else {
+                // eslogger is not running, ensure UI reflects this
+                self.isRunning = false
+                self.isStreamingMode = false
+                self.statusMessage = "ESLogger stopped"
+            }
+        }
+    }
+    
+    // Public method for UI to trigger status sync
+    func syncStreamingStatusFromUI() async {
+        await syncStreamingStatus()
+    }
+    
     // New streaming methods
     func startESLoggerStreaming() {
-        guard !isRunning else {
-            statusMessage = "Already running"
-            return
-        }
-        
-        isRunning = true
-        isStreamingMode = true
         statusMessage = "Starting real-time monitoring..."
         
         Task {
-            await helperToolManager.startESLoggerStreaming { [weak self] success, error in
+            // First check if already running
+            await helperToolManager.isESLoggerRunning { [weak self] isRunning in
                 guard let self = self else { return }
                 
-                if success {
+                if isRunning {
+                    // Already running, just sync UI
+                    self.isRunning = true
+                    self.isStreamingMode = true
                     self.statusMessage = "Real-time monitoring active"
-                } else {
-                    self.isRunning = false
-                    self.isStreamingMode = false
-                    self.statusMessage = "Failed to start streaming: \(error ?? "Unknown error")"
+                    return
+                }
+                
+                // Not running, start it
+                Task {
+                    await self.helperToolManager.startESLoggerStreaming { [weak self] success, error in
+                        guard let self = self else { return }
+                        
+                        if success {
+                            self.isRunning = true
+                            self.isStreamingMode = true
+                            self.statusMessage = "Real-time monitoring active"
+                        } else {
+                            self.isRunning = false
+                            self.isStreamingMode = false
+                            self.statusMessage = "Failed to start streaming: \(error ?? "Unknown error")"
+                        }
+                    }
                 }
             }
         }

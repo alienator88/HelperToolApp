@@ -12,6 +12,7 @@ public protocol HelperToolProtocol {
     func runCommand(command: String, withReply reply: @escaping (String) -> Void)
     func startESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
     func stopESLoggerStreaming(withReply reply: @escaping (Bool, String?) -> Void)
+    func isESLoggerRunning(withReply reply: @escaping (Bool) -> Void)
 }
 
 // Protocol for streaming callbacks from helper to main app
@@ -29,6 +30,7 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
     private var streamingConnection: NSXPCConnection?
     private var isStreaming = false
     private var streamingProcess: Process?
+    private var esloggerPID: Int32? = nil
     
     // Accept new XPC connections by setting up the exported interface and object.
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
@@ -102,6 +104,18 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
             try process.run()
             self.streamingProcess = process
             self.isStreaming = true
+            self.esloggerPID = process.processIdentifier
+            
+            // Monitor process termination
+            process.terminationHandler = { [weak self] terminatedProcess in
+                fputs("🔄 HELPER: eslogger process terminated with status \(terminatedProcess.terminationStatus)\n", stderr)
+                fflush(stderr)
+                
+                // Clear PID regardless of how process ended
+                self?.esloggerPID = nil
+                self?.isStreaming = false
+                self?.streamingProcess = nil
+            }
             
             // Get the delegate for callbacks
             let delegate = streamingConnection.remoteObjectProxyWithErrorHandler { error in
@@ -133,6 +147,7 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
         streamingProcess?.terminate()
         streamingProcess = nil
         isStreaming = false
+        esloggerPID = nil
         
         // Notify completion
         if let connection = streamingConnection {
@@ -146,6 +161,26 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
         }
         
         reply(true, nil)
+    }
+    
+    func isESLoggerRunning(withReply reply: @escaping (Bool) -> Void) {
+        // Verify the PID is still valid by checking if the process exists
+        if let pid = esloggerPID {
+            let processExists = kill(pid, 0) == 0
+            if !processExists {
+                // Process no longer exists, clear our state
+                fputs("⚠️ HELPER: eslogger PID \(pid) no longer exists, clearing state\n", stderr)
+                fflush(stderr)
+                esloggerPID = nil
+                isStreaming = false
+                streamingProcess = nil
+            }
+        }
+        
+        let isRunning = esloggerPID != nil
+        fputs("📊 HELPER XPC: isESLoggerRunning called - Running: \(isRunning) (PID: \(esloggerPID?.description ?? "nil"))\n", stderr)
+        fflush(stderr)
+        reply(isRunning)
     }
     
     private func streamJSONLines(from pipe: Pipe, to delegate: ESLoggerStreamDelegate?) {
@@ -179,6 +214,10 @@ class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperToolProtocol {
                 }
             }
         }
+        
+        // Clear PID when streaming ends
+        esloggerPID = nil
+        isStreaming = false
         
         fputs("🏁 HELPER STREAM: Finished streaming JSON lines\n", stderr)
         fflush(stderr)

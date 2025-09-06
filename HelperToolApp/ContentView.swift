@@ -129,16 +129,6 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
 
-                Button("Kickstart Service") {
-                    Task {
-                        await helperToolManager.kickstartService { output in
-                            commandOutput = output
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.blue)
-
             }
         }
         .toolbarBackground(.clear)
@@ -151,6 +141,13 @@ struct ContentView: View {
             // Initialize ESLoggerManager with the same helperToolManager instance
             if esloggerManager == nil {
                 esloggerManager = ESLoggerManager(helperToolManager: helperToolManager, dataStore: dataStore)
+            }
+            
+            // Sync streaming status after UI appears and XPC connection is ready
+            Task {
+                // Small delay to ensure XPC connection is established
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                await esloggerManager?.syncStreamingStatusFromUI()
             }
         }
     }
